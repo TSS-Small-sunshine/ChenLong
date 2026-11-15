@@ -43,6 +43,19 @@ npm run backup              # 一致性备份数据库 → data/backups/
 * **启动自检**：启动时对 `ENCRYPTION_KEY` 做一次「加密→解密」哨兵自检，密钥不可用直接 `[FATAL]` 退出，避免「服务能启动、首次保存 API Key 才 500」。
 * **会话失效**：管理员重置他人密码会立即踢掉目标用户全部已登录会话；用户自助改密会踢掉其它设备会话、保留当前会话。
 
+### Docker 运行（推荐用于部署）
+
+`@`@`bash
+cp .env.example .env      # 填生产密钥：SESSION_SECRET / ENCRYPTION_KEY / ADMIN_*
+mkdir -p data && sudo chown -R 1000:1000 data   # Linux：让容器内 node 用户可写
+docker compose up -d --build
+curl -s http://127.0.0.1:3000/api/health
+`@`@`
+
+- 镜像多阶段构建、**非 root 运行**、内置 healthcheck，数据通过 `./data` 卷持久化；容器默认只绑 `127.0.0.1:3000`，公网访问请前置反代 + HTTPS；
+- **只支持单副本**（SQLite 单写 + 限流为进程内存态），不要 scale 多容器；
+- 完整指南（反代配置、备份恢复、升级、排错）见 [docs/DEPLOY-DOCKER.md](docs/DEPLOY-DOCKER.md)。
+
 生成密钥：
 
 ```bash
@@ -224,7 +237,7 @@ node scripts/backup-db.js --help   # 查看备份脚本参数（--out / --db / -
 ```
 
 * 测试全部使用 `os.tmpdir()` 下的临时数据库与随机端口，**不会写入** `data/chenlong.db`；覆盖 CSRF、限流、加密、SSRF、会话存储、聊天模型解析、SSE 解析、改密会话失效与应用层 HTTP 集成。
-* **CI / 安全检查**：`.github/workflows/ci.yml`（Node 24 + `npm test`）、`codeql.yml`（CodeQL）、`dependency-review.yml`（依赖变更审查）、`pr-guard.yml`（PR 机器人）；在 push / PR 时自动运行，规则见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+* **CI / 安全检查**：`.github/workflows/ci.yml`（Node 24 + `npm test` + `Docker image` 镜像构建与容器冒烟）、`codeql.yml`（CodeQL）、`dependency-review.yml`（依赖变更审查）、`pr-guard.yml`（PR 机器人）；在 push / PR 时自动运行，规则见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 * 备份脚本使用 SQLite Online Backup API，自动包含 WAL 中尚未 checkpoint 的数据；恢复时停服后用备份替换 `data/chenlong.db`（同时删除旧的 `-wal`/`-shm`），并确保 `ENCRYPTION_KEY` 与备份时一致。
 * 备份目录 `data/backups/` 已被 `.gitignore` 忽略；**`ENCRYPTION_KEY` 必须与备份分开离线保管**，否则已加密的 API Key 永久无法解密。
 

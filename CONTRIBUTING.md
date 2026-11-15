@@ -30,6 +30,7 @@ npm test          # 83 个用例，使用临时库与随机端口，不会碰 da
 
 - **PR guard**：每次 PR 打开或更新都会运行，发布一条带 `<!-- pr-guard -->` 标记的评论和 Review，并添加 `security-ok/security-review`、`size/*` 标签；Fork PR 因 GITHUB_TOKEN 只读可能无法评论（检查仍会运行）。
 - **CodeQL**：push main、PR、每周一凌晨自动扫描 JS/TS，结果在仓库 Security → Code scanning 查看。
+- **Docker image**（非必需检查）：在 Linux runner 构建镜像并启动容器做健康检查与首页冒烟；见 [docs/DEPLOY-DOCKER.md](docs/DEPLOY-DOCKER.md)。
 - **Dependency review**：PR 中新增/升级依赖引入 high 及以上漏洞时直接失败。
 - **Dependabot**：每周一自动提依赖与 GitHub Actions 升级 PR，同样走检查流程。
 - 可选 AI 审查：见 `docs/knowledge-base/12-pr-workflow-and-bots.md`（Copilot 自动审查 / CodeRabbit / PR-Agent 的接入方式与取舍）。
