@@ -1,5 +1,7 @@
 # 尘龙 ChenLong
 
+[![CI](https://github.com/TSS-Small-sunshine/ChenLong/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/TSS-Small-sunshine/ChenLong/actions/workflows/ci.yml)
+
 > 一个 AI 助手网站：原生 HTML/CSS/JS 前端 + Node.js/Express 后端 + SQLite 存储。
 > 当前进度：**阶段 6 基本完成**（阶段 1–5 全部完成；限流 / CSRF / SSRF / 安全响应头 / 会话失效 / 流式空闲超时已落地）。
 > 工程知识库见 [docs/knowledge-base/](docs/knowledge-base/README.md)：架构、数据库、API、前端、安全、运维与现状差距。
@@ -222,6 +224,7 @@ node scripts/backup-db.js --help   # 查看备份脚本参数（--out / --db / -
 ```
 
 * 测试全部使用 `os.tmpdir()` 下的临时数据库与随机端口，**不会写入** `data/chenlong.db`；覆盖 CSRF、限流、加密、SSRF、会话存储、聊天模型解析、SSE 解析、改密会话失效与应用层 HTTP 集成。
+* **CI**：`.github/workflows/ci.yml` 在 push / PR 时于 Node 24 上执行 `npm ci && npm test`；改动后看仓库 Actions 页面即可。
 * 备份脚本使用 SQLite Online Backup API，自动包含 WAL 中尚未 checkpoint 的数据；恢复时停服后用备份替换 `data/chenlong.db`（同时删除旧的 `-wal`/`-shm`），并确保 `ENCRYPTION_KEY` 与备份时一致。
 * 备份目录 `data/backups/` 已被 `.gitignore` 忽略；**`ENCRYPTION_KEY` 必须与备份分开离线保管**，否则已加密的 API Key 永久无法解密。
 
@@ -243,7 +246,7 @@ node scripts/backup-db.js --help   # 查看备份脚本参数（--out / --db / -
 * 吉祥物完整立绘仍为 CSS 占位；页头 logo 使用原创小图（256×256）。
 * **密码策略两套**：注册/自助改密 6–64 位无复杂度；管理员重置 8–32 位且必须含字母+数字（前端弹窗与后端一致）。
 * **限流是进程内存态**：多实例部署时额度按实例放大，重启清零；当前仅适合单进程部署。
-* **工程化**：已有 GitHub 公开仓库 [`TSS-Small-sunshine/ChenLong`](https://github.com/TSS-Small-sunshine/ChenLong) 与本地 git（main）；仍无 CI 与数据库 migration 框架；用户中心「历史对话」仍为静态空态；`public/js/admin.js` 是阶段 1 死代码（6 个后台页仍加载）。
+* **工程化**：已有 GitHub 公开仓库 [`TSS-Small-sunshine/ChenLong`](https://github.com/TSS-Small-sunshine/ChenLong) 与本地 git（main），并接入 GitHub Actions CI（push/PR 自动 `npm test`）；仍无数据库 migration 框架；用户中心「历史对话」仍为静态空态；`public/js/admin.js` 是阶段 1 死代码（6 个后台页仍加载）。
 
 ---
 

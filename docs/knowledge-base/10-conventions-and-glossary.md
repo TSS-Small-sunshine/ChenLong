@@ -152,7 +152,7 @@
 | # | 坑 | 影响 | 状态 / 缓解 |
 |---|---|---|---|
 | 1 | **没有 `.git` 仓库**（只有 .gitignore） | 无版本回滚、无法追溯 | ✅ 已解决（2026-11-15）：已 `git init`、提交并推送到 GitHub 公开仓库；`data/backups/` 已在 .gitignore |
-| 2 | 没有测试 / lint / CI | 改动无自动验证 | 部分缓解：已补 `node:test` 83 个用例；仍无 lint 与 CI |
+| 2 | 没有测试 / lint / CI | 改动无自动验证 | 已缓解：`node:test` 83 个用例 + GitHub Actions CI（push/PR）；仍无 lint 脚本 |
 | 3 | 没有 migration 框架 | 表结构升级易出错 | ⚠️ 仍存在：手工迁移 + 备份演练 |
 | 4 | 限流是进程内存态 | 多实例部署额度翻倍；重启清零 | ⚠️ 仍存在：单实例部署或换共享存储 |
 | 5 | 聊天无流式 idle 超时 | 上游卡住时请求挂着 | ✅ 已修复：默认 60 秒无数据中断（`CHAT_STREAM_IDLE_TIMEOUT_MS` 可调） |

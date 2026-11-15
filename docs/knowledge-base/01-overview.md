@@ -207,6 +207,6 @@ npm start                        # → http://127.0.0.1:3000
 - `public/` 页面是"裸 HTML"，直接双击打开时 API 请求会指向 `file://` 而失败，**必须经 Express 访问**；
 - 站点名若含空格会被前端拆成"主标题 + 副标题"两截渲染（`paintSiteName` 的既有行为），建议站点名不带空格；
 - 管理员重置密码的规则（8–32 位、必须含字母和数字）与注册密码规则（6–64 位）**不一致**，见 [10 约定与术语](10-conventions-and-glossary.md)；
-- 项目已初始化 git 并推送 GitHub 公开仓库（`TSS-Small-sunshine/ChenLong`，main）；仍无 CI，改动前建议本地提交或先用 `npm run backup` 备份数据库；
+- 项目已初始化 git 并推送 GitHub 公开仓库（`TSS-Small-sunshine/ChenLong`，main），并接入 GitHub Actions CI（push/PR 跑 `npm test`）；改动前建议本地提交或先用 `npm run backup` 备份数据库；
 - 聊天的 Base URL 通常要带 `/v1`（聊天路径固定 `{base}/chat/completions`，只有模型发现会回退 `/v1/models`）；
 - 数据库是 WAL 模式，**直接复制 `chenlong.db` 可能漏掉 `-wal` 里的最新数据**，备份要么停服要么用 `VACUUM INTO` / checkpoint。

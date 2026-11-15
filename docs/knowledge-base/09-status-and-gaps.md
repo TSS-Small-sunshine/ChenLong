@@ -358,7 +358,7 @@ temp-dir-exists = False
 - **前端一致性与过时文案清理完成**：后台 6 页退出按钮、公告条 hoist、logo 外链修复、能力卡/页脚/© 年份更新。
 - **根 README 已刷新**（216 → 259 行）：阶段 6 基本完成、API/安全/测试/备份章节补齐，§1.2 的偏差大部分关闭。
 
-> **补充（2026-11-15 晚）**：仓库已完成 `git init` + 基线提交，并推送到公开仓库 `TSS-Small-sunshine/ChenLong`（main）。因此本节及 §4.2/§5 中「无 `.git`」「git init 待做」的表述已过时——git 部分关闭，其余（CI、migration 等）保持不变。
+> **补充（2026-11-15 晚）**：仓库已完成 `git init` + 基线提交并推送到公开仓库 `TSS-Small-sunshine/ChenLong`（main）；随后接入 GitHub Actions CI（`.github/workflows/ci.yml`，Node 24 跑 `npm test`）。因此本节及 §4.2/§5 中「无 `.git`」「无 CI」相关表述已过时——git 与 CI 部分关闭，其余（migration 等）保持不变。
 
 ### 7.2 已修复项（落点文件 + 行为 + 验证）
 

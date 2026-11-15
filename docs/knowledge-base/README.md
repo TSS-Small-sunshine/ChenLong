@@ -18,7 +18,7 @@
 - **后台六页**：仪表盘 / API 管理 / 模型管理 / 用户管理 / 聊天数据 / 系统设置。
 - **安全基线**：bcrypt、SQLite 会话、CSRF 双校验（Session + Header）、内存滑动窗口限流、SSRF 防护（内网/保留段 + DNS 全记录 + 拒绝上游重定向）、CSP 等安全头、`/api` 响应 `no-store`、启动密钥自检、改密/重置密码会话失效均已落地。
 - **本机数据现状是空壳**：数据库仅 1 个管理员，0 个 API 服务 / 模型 / 会话；想真正聊天，必须先在后台配置 API 服务并启用模型。
-- **工程化现状**：已补 `node:test` 测试套件（83 个用例，`npm test` 全绿）与 `npm run backup` 一致性备份脚本；已初始化 git 并推送到 GitHub 公开仓库（`TSS-Small-sunshine/ChenLong`）；仍缺 CI 与数据库 migration 框架。
+- **工程化现状**：已补 `node:test` 测试套件（83 个用例，`npm test` 全绿）与 `npm run backup` 一致性备份脚本；已初始化 git 并推送到 GitHub 公开仓库（`TSS-Small-sunshine/ChenLong`），并接入 GitHub Actions CI（push/PR 跑 `npm test`）；仍缺数据库 migration 框架。
 
 ## 文档索引
 
@@ -71,7 +71,7 @@
 | 数据库 | 7 张表；`users`=1（admin）、`api_providers`=0、`models`=0、`conversations`=0、`messages`=0、`settings`=6、`sessions`=1 |
 | 数据文件 | `chenlong.db` 86 KB + `-wal` 231 KB + `-shm` 33 KB（WAL 未 checkpoint 时属正常现象） |
 | 版本控制 | **GitHub 公开仓库** `TSS-Small-sunshine/ChenLong`（main，首次提交 2026-11-15）；本地 `.git` 已初始化 |
-| 测试 / CI | ✅ 已有 node:test 测试套件（core 65 + features 18 = 83 用例，`npm test` 全绿）；仍无 CI 配置 |
+| 测试 / CI | ✅ node:test 测试套件（core 65 + features 18 = 83 用例，`npm test` 全绿）+ GitHub Actions CI（`.github/workflows/ci.yml`，Node 24） |
 | 端口 | 核查时 3000 端口空闲（服务未启动）；冒烟测试见 [09](09-status-and-gaps.md) |
 
 ## 证据与置信度
