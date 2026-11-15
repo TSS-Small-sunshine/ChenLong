@@ -13,7 +13,7 @@
 | 前端一致性 | logo 外链修复；后台 6 页退出按钮；公告条 hoist 补齐 2 页；重命名长度 60→40；user.html logo；首页/用户中心过时文案与 © 年份 | public/* 行号见 2 节 |
 | 工程化 | `test/` 15 文件 / 83 用例（node:test）；`npm test`/`test:core`；`scripts/backup-db.js`（WAL 安全备份）；`.gitignore` 加 `data/backups/` | 实测：83 pass / 0 fail；备份 quick_check=ok |
 | 文档 | 根 README 216→259 行刷新；09 增加 §7「第二批改进与状态更新」；新增本文件 11-changes.md | `README.md:1-259`、09 §7 |
-| 未做 | `.git`/CI、DB migration、DNS 重绑定、跨进程限流、dbSize 口径、会话模型沿用、忘记密码等 | 见第 5 节 |
+| 未做 | CI、DB migration、DNS 重绑定、跨进程限流、dbSize 口径、会话模型沿用、忘记密码等（`.git` 已于 2026-11-15 补齐） | 见第 5 节 |
 
 ---
 
@@ -186,7 +186,7 @@ lead 另行执行：`npm test` 83 pass / 0 fail；临时库 + 3100 端口端到�
 |---|---|---|---|
 | 1 | SSRF DNS 重绑定窗口 | `upstream-guard.js:135-171` 校验与真实连接之间可被重绑定；重定向面已关闭 | 连接层固定 IP（undici dispatcher）或连接后二次校验 |
 | 2 | 限流单进程内存态 | `rate-limit.js:21-30`；多实例额度 ×N、重启清零 | 明确单进程部署，或改 SQLite/Redis 共享计数 |
-| 3 | 无 `.git` / CI | 实测无 `.git`；无 CI 配置 | `git init` + 基线提交 + CI 跑 `npm test` |
+| 3 | 无 CI（`.git` 已补齐） | 远端仓库 `TSS-Small-sunshine/ChenLong` 已就绪（main、公开）；仍无 CI 配置 | 添加 GitHub Actions：Node 24 上跑 `npm test` |
 | 4 | 无 DB migration 框架 | `database/init.js` 仅 `CREATE TABLE IF NOT EXISTS` | `PRAGMA user_version` + 迁移脚本 |
 | 5 | `dbSizeBytes` 不含 WAL/SHM | `routes/admin.js:64-70`；第一轮实测主库 86,016 B vs 三件套 349,536 B | 合计三件套或 `page_count*page_size` + WAL |
 | 6 | 会话模型不沿用 | `chat-store.js:77-94` 未传 `modelId` 只取默认；`touchConversation` 覆盖 `model_id` | 优先读会话最近模型再回落默认；前端切换会话时回填下拉框 |

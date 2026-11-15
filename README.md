@@ -3,6 +3,7 @@
 > 一个 AI 助手网站：原生 HTML/CSS/JS 前端 + Node.js/Express 后端 + SQLite 存储。
 > 当前进度：**阶段 6 基本完成**（阶段 1–5 全部完成；限流 / CSRF / SSRF / 安全响应头 / 会话失效 / 流式空闲超时已落地）。
 > 工程知识库见 [docs/knowledge-base/](docs/knowledge-base/README.md)：架构、数据库、API、前端、安全、运维与现状差距。
+> GitHub 仓库：<https://github.com/TSS-Small-sunshine/ChenLong>（public，`main` 分支；首次提交 2026-11-15）
 
 ---
 
@@ -242,7 +243,7 @@ node scripts/backup-db.js --help   # 查看备份脚本参数（--out / --db / -
 * 吉祥物完整立绘仍为 CSS 占位；页头 logo 使用原创小图（256×256）。
 * **密码策略两套**：注册/自助改密 6–64 位无复杂度；管理员重置 8–32 位且必须含字母+数字（前端弹窗与后端一致）。
 * **限流是进程内存态**：多实例部署时额度按实例放大，重启清零；当前仅适合单进程部署。
-* **工程化**：仍无 `.git` 仓库与 CI；数据库无 migration 框架（改表需手工迁移）；用户中心「历史对话」仍为静态空态；`public/js/admin.js` 是阶段 1 死代码（6 个后台页仍加载）。
+* **工程化**：已有 GitHub 公开仓库 [`TSS-Small-sunshine/ChenLong`](https://github.com/TSS-Small-sunshine/ChenLong) 与本地 git（main）；仍无 CI 与数据库 migration 框架；用户中心「历史对话」仍为静态空态；`public/js/admin.js` 是阶段 1 死代码（6 个后台页仍加载）。
 
 ---
 

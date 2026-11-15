@@ -173,6 +173,6 @@ location / {
 
 - 项目根 **`.env` 存在**，7 个键（PORT/NODE_ENV/SESSION_SECRET/ENCRYPTION_KEY/ADMIN_USERNAME/ADMIN_PASSWORD/DB_PATH）均已填写（文档不记录具体值）；
 - **`data/.dev-secrets.json` 也存在**（177 B）：由于 .env 已提供两个密钥，该文件当前**不会被使用**，属历史遗留；别把它当唯一密钥来源，也别误删后以为没事（若哪天 .env 丢失而依赖它，删了就无法恢复）；
-- 项目根**没有 `.git`**，因此 .gitignore（忽略 .env、data/*.db*、data/.dev-secrets.json）尚未真正生效——**初始化仓库后务必确认这些敏感文件不被提交**；
+- 项目根**已初始化 `.git`** 并推送到 GitHub 公开仓库（`TSS-Small-sunshine/ChenLong`）；首次提交前已用 `git check-ignore` 验证 `.env`、`data/*.db*`、`data/.dev-secrets.json`、`data/backups/` 均被忽略（远端 contents 查询同样 404）；
 - 服务默认监听 0.0.0.0:3000，核查时端口空闲；
 - 第二批改进后：`.env.example` 已补充 `TRUST_PROXY` / `RATE_LIMIT_ENABLED` / `ALLOW_PRIVATE_UPSTREAM` / `CHAT_STREAM_IDLE_TIMEOUT_MS` 四个可选开关；新增 `npm test` / `npm run test:core` / `npm run backup` 脚本与 `test/`、`scripts/backup-db.js`；`.gitignore` 已忽略 `data/backups/`。
