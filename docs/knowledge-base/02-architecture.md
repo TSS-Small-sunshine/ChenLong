@@ -1,12 +1,12 @@
 # 02 架构总览
 
 > 本章回答：**进程怎么起、请求怎么流、代码怎么分层、错误怎么回、常量在哪。**
-> 入口文件只有一个：`server/app.js`（251 行），先读它再读别的。
+> 入口文件只有一个：`server/app.js`（279 行），先读它再读别的。
 
 ## 1. 部署形态
 
 - **单进程 Node.js + Express 5**：同一个端口同时提供静态页面（`public/`）与 `/api` 接口；
-- **SQLite 单文件**数据库，WAL 模式，同机同进程访问（没有独立数据库服务）；
+- **PostgreSQL** 独立数据库服务（进程内用 `pg` 连接池访问；不再有 SQLite 文件/WAL）；
 - 上游 AI 服务由后端 `fetch` 直连（OpenAI 兼容），浏览器不直连；
 - 不内置 HTTPS、反向代理、进程守护——生产需要自行套 Nginx/Caddy + systemd/PM2/NSSM（见 [08](08-config-and-ops.md)）。
 
@@ -15,7 +15,7 @@
                  │
                  ├─ 静态中间件 ──▶ public/ 下的 html/css/js
                  │
-                 └─ /api 中间件链 ──▶ routes/* ──▶ services/* ──┬─▶ SQLite (data/chenlong.db)
+                 └─ /api 中间件链 ──▶ routes/* ──▶ services/* ──┬─▶ PostgreSQL (pg Pool → db:5432)
                                                               └─▶ 上游 AI 服务 (fetch, SSE)
 ```
 
@@ -26,20 +26,20 @@
 | # | 步骤 | 位置 | 说明 |
 |---|---|---|---|
 | 1 | 加载 `.env` | app.js:3 | `dotenv.config({ path: ../.env, quiet: true })` |
-| 2 | 定义常量 | app.js:18–30 | 端口、环境、版本、会话时长、5 组限流规则 |
-| 3 | 构造 5 个限流器 | app.js:36–62 | 全局(写)/登录/注册/改密/聊天；`countWritesOnly` 包装全局器(64–69) |
-| 4 | `ensureSecrets()` | app.js:71–109 | 生产缺密钥直接 exit(1)；开发走 `data/.dev-secrets.json` 兜底 |
+| 2 | 定义常量 | app.js:19–31 | 端口、环境、版本、会话时长、5 组限流规则 |
+| 3 | 构造 5 个限流器 | app.js:38–62 | 全局(写)/登录/注册/改密/聊天；`countWritesOnly` 包装全局器(65–70) |
+| 4 | `ensureSecrets()` | app.js:72–110 | 生产缺密钥直接 exit(1)；开发走 `data/.dev-secrets.json` 兜底 |
 | 4.5 | `assertEncryptionKey()` | app.js:112–124 | 启动哨兵自检（encrypt→decrypt）；`ENCRYPTION_KEY` 不可用即 `[FATAL]` exit(1) |
-| 5 | 创建 app | app.js:111–115 | 关闭 `x-powered-by`；`TRUST_PROXY=1/true/yes/on` 时信任一层代理 |
-| 6 | 全局中间件 | app.js:117–138 | 安全头 → body 解析(1 MB) → session → 静态目录 |
-| 7 | 健康检查 | app.js:140–153 | `GET /api/health`，在限流/鉴权之前 |
-| 8 | /api 链 | app.js:155–176 | 全局限流(仅写) → attachUser → CSRF token 端点 → CSRF 校验 → 专项限流 |
-| 9 | 挂载路由 | app.js:178–185 | auth/chat/providers/models/user/users/admin/settings |
-| 10 | 兜底 | app.js:187–201 | `/api` 404 + 全局错误处理器 |
-| 11 | `start()` | app.js:203–246 | initDatabase → listen → 错误处理 → 优雅退出 |
-| 12 | 导出 | app.js:248–249 | `module.exports = app; module.exports.start = start` |
+| 5 | 创建 app | app.js:126–130 | 关闭 `x-powered-by`；`TRUST_PROXY=1/true/yes/on` 时信任一层代理 |
+| 6 | 全局中间件 | app.js:132–159 | 安全头 → body 解析(1 MB) → session（`PgSessionStore`）→ 静态目录 → `/api` no-store |
+| 7 | 健康检查 | app.js:161–174 | `GET /api/health`：`await ping()` 查 PostgreSQL，在限流/鉴权之前 |
+| 8 | /api 链 | app.js:176–188 | 全局限流(仅写) → attachUser → CSRF token 端点 → CSRF 校验 → 专项限流 |
+| 9 | 挂载路由 | app.js:199–206 | auth/chat/providers/models/user/users/admin/settings |
+| 10 | 兜底 | app.js:208–222 | `/api` 404 + 全局错误处理器 |
+| 11 | `start()` | app.js:224–269 | `await initDatabase()` → listen → 错误处理 → 优雅退出（`await closeDb()`） |
+| 12 | 导出 | app.js:271–279 | `module.exports = app; module.exports.start = start` |
 
-> 注意：**require 这个模块不会建库**。数据库初始化只发生在 `start()` 里；但路由/服务里的 `getDb()` 是惰性打开连接，所以被外部托管时也应先确保调过 `initDatabase()`。
+> 注意：**require 这个模块不会建库**。数据库初始化只发生在 `start()` 里（`await initDatabase()`）；路由/服务里的 `getDb()` 是惰性创建 **pg 连接池**，被外部托管时也必须先 `await initDatabase()`。PG 连不上时启动会 `[FATAL]` 退出。
 
 启动日志关键行：`尘龙 ChenLong v0.1.0 已启动：http://127.0.0.1:3000 (development)`；端口占用则输出 `[FATAL] 端口 xxx 已被占用` 并退出。
 
@@ -49,11 +49,11 @@
 |---|---|---|---|---|
 | 1 | `security-headers` | 全站 | CSP、X-Content-Type-Options、X-Frame-Options、Referrer-Policy、HSTS(仅 https) | 必须最早，覆盖所有响应包括错误页 |
 | 2 | `express.json / urlencoded` | 全站 | 解析 JSON/表单，上限 1 MB | 后面所有 handler 都要 `req.body` |
-| 3 | `session` | 全站 | Cookie `chenlong.sid` + SqliteSessionStore，7 天 | CSRF/登录态都依赖 session |
+| 3 | `session` | 全站 | Cookie `chenlong.sid` + `PgSessionStore`（PostgreSQL `sessions` 表），7 天 | CSRF/登录态都依赖 session |
 | 4 | `express.static(public)` | 全站 | 静态页面直出 | 在 API 之前，避免被 API 404 吞掉；命中后不再走后面 |
-| 5 | `GET /api/health` | /api | 数据库连通性自检 | 故意避开限流与 CSRF，供探活使用 |
+| 5 | `GET /api/health` | /api | 异步 `await ping()` 检查 PostgreSQL 连通性 | 故意避开限流与 CSRF，供探活使用 |
 | 6 | 全局限流（写请求） | /api 非 GET/HEAD/OPTIONS | 300 次/分钟/IP | GET 全部放行，避免刷页面被误伤 |
-| 7 | `attachUser` | /api | 从 session.userId 查 users，挂 `req.user`；用户被禁用/不存在则销毁会话并继续（匿名） | 鉴权判断的前置数据 |
+| 7 | `attachUser` | /api | `await` 按 session.userId 查 users，挂 `req.user`；用户被禁用/不存在则销毁会话并继续（匿名） | 鉴权判断的前置数据 |
 | 8 | `GET /api/csrf-token` | /api | 首次访问生成并返回 session 里的 token | **必须在 CSRF 校验之前**，否则首屏拿不到 token |
 | 9 | `requireCsrf` | /api 非 GET/HEAD/OPTIONS | 校验 `X-CSRF-Token`（timingSafeEqual） | 所有写操作统一防跨站 |
 | 10 | 专项限流 | 具体路径 | 登录 10 次/5 分钟/IP；注册 5 次/10 分钟/IP；重置密码 10 次/分钟/管理员；聊天 20 次/分钟/用户 | 放在 CSRF 之后，避免攻击者用无效请求触发限流计数 |
@@ -94,7 +94,7 @@
 | 横切 | `server/middleware/` | 认证、鉴权、CSRF、安全头 | database、session |
 | 接口层 | `server/routes/` | 参数校验、组装响应、错误码 | services、middleware |
 | 服务层 | `server/services/` | 业务规则、上游调用、存储读写、加密、限流 | database、其他 services（有限） |
-| 数据层 | `server/database/` | 连接单例、建表/索引/播种 | 无 |
+| 数据层 | `server/database/` | PostgreSQL 连接池单例、异步查询/事务封装、建表/索引/播种 | `pg` |
 
 ```text
 app.js
@@ -107,13 +107,13 @@ app.js
         └─ database/db
 ```
 
-- **没有依赖注入容器**，全部 `require` 单例：数据库连接（`db.js` 的 `instance`）、设置默认值缓存、加密 key 缓存（按 ENCRYPTION_KEY 原文缓存）、限流命中表（`Map`）。
+- **没有依赖注入容器**，全部 `require` 单例：pg 连接池（`db.js` 的 `pool`）、设置默认值缓存、加密 key 缓存（按 ENCRYPTION_KEY 原文缓存）、限流命中表（`Map`）。
 - 唯一的"反向依赖"是 `settings-store `require` database/init` 的 `SETTINGS_DEFAULTS`（有 fallback 兜底，settings-store.js:20–46）。
 
 ## 6. 错误处理约定
 
 - 业务路由普遍用本文件内的 `fail(res, status, code, message)` 小助手直接返回统一信封；该 helper 在每个 routes 文件里各自重复实现（可考虑抽公共模块）；
-- 全局错误处理器（app.js:192–201）：
+- 全局错误处理器（app.js:215–222）：
   - 状态码：`err.status` 为 400–599 之间整数则透传，否则 500；
   - code 规则：≥500 → `INTERNAL_ERROR`；JSON 解析失败 → `INVALID_JSON`；其余 4xx → `BAD_REQUEST`；
   - 消息：生产环境 5xx 一律"服务器内部错误"，开发环境带 `err.message`；
@@ -133,26 +133,27 @@ app.js
 
 | 事件 | 行为 |
 |---|---|
-| 启动 | `initDatabase()`（建表/播种，失败 exit(1)）→ `app.listen(PORT)` |
-| 端口占用 | `EADDRINUSE` → 明确提示"端口已被占用，请先关闭占用进程或修改 PORT" → `closeDb()` → exit(1) |
-| SIGINT / SIGTERM | `server.close()` → 等连接自然结束 → `closeDb()` → exit(0)；5 秒后强制 finish（`unref` 定时器） |
+| 启动 | `await initDatabase()`（连接 PG、建表/播种，失败 exit(1)）→ `app.listen(PORT)` |
+| 端口占用 | `EADDRINUSE` → 明确提示"端口已被占用，请先关闭占用进程或修改 PORT" → `await closeDb()` → exit(1) |
+| SIGINT / SIGTERM | `server.close()` → 等连接自然结束 → `await closeDb()`（关闭 pg 连接池）→ exit(0)；5 秒后强制 finish（`unref` 定时器） |
 | 定时器 | 会话清理（15 分钟，`session-store.js:6,38`）、限流 Map 清理、上游连接超时定时器——都 `unref()`，不阻止进程退出 |
 | 未捕获异常 | **没有** `uncaughtException/unhandledRejection` 处理器，进程会按 Node 默认行为退出（生产建议加进程守护） |
 
 ## 9. 并发、性能与扩展性
 
-- **better-sqlite3 是同步 API**：单个查询/事务会阻塞事件循环。当前所有查询都有索引或小表，问题不大；但用户/消息量增长后，后台分页的 `COUNT(*)` 与列表查询会变慢；
-- **WAL** 提供读写并发，仍是单写者；`busy_timeout=5000` 可容忍短时锁竞争；
-- **限流是进程内存态**：多进程/多实例部署时各算各的额度（实际额度被放大）；`/api/csrf-token`、会话存 DB 可跨进程共享；
-- **SSE 长连接**：每个聊天连接占用一个 socket 和一条上游连接；上游建连 10 秒超时，但**没有流式 idle 超时**（见 [06](06-chat-flow.md)）；
+- **数据层全异步**：`pg` 连接池（默认 `PG_POOL_MAX=10`）不阻塞事件循环；单请求可能产生多次 DB 往返（如 admin 统计的子查询），大表下要关注 N+1 与慢查询；
+- **PostgreSQL 支持并发写**：不再有 SQLite 单写者限制；但事务会占用连接（`await getDb().transaction(...)` 从池里取一条并持有到提交），长事务会拖垮池；SSE 连接本身不占 PG 连接；
+- **限流是进程内存态**：多进程/多实例部署时各算各的额度（实际额度被放大）；会话存 PG，跨进程共享没有障碍；
+- **会话按用户失效是全表扫描**：`destroyByUserId` 会读取全部 `sessions` 行再逐条删（见 [03](03-database.md) §12），会话量大时需加 `user_id` 列/索引；
+- **SSE 长连接**：每个聊天连接占用一个 socket 和一条上游连接；上游建连 10 秒超时，另有 60 秒流空闲超时（`CHAT_STREAM_IDLE_TIMEOUT_MS`）；
 - 静态资源体量：`public/css` 约 84 KB、`public/js` 约 184 KB（未压缩），无 CDN；
-- 无 clustering、无 worker、无 PM2 配置；单进程足够当前规模。
+- 无 clustering、无 worker、无 PM2 配置；当前规模单实例足够（多实例前先把限流换共享存储）。
 
 ## 10. 关键常量总表
 
 | 常量 | 值 | 位置 | 含义 |
 |---|---|---|---|
-| `SESSION_MAX_AGE` | 7 天 | app.js:22 | 会话 Cookie 与 DB 过期时间 |
+| `SESSION_MAX_AGE` | 7 天 | app.js:23 | 会话 Cookie 与 DB 过期时间 |
 | `RATE_LIMIT_GLOBAL` | 300 / 60s / IP | app.js:26 | 仅 `/api` 写请求 |
 | `RATE_LIMIT_LOGIN` | 10 / 5min / IP | app.js:27 | 登录 |
 | `RATE_LIMIT_REGISTER` | 5 / 10min / IP | app.js:28 | 注册 |
@@ -175,5 +176,5 @@ app.js
 1. 抽出共享的 `fail()` / 分页 / LIKE 转义工具，消除 8 个 routes 文件里的重复实现；
 2. 引入 `compression` 与静态缓存策略（生产前置反代也可）；
 3. 前端静态按页面拆成更小的 CSS/JS（当前每页共享 common.css 36 KB）；
-4. 若要多实例部署，限流需换共享存储（Redis/SQLite 表）或粘性会话；
+4. 若要多实例部署，限流需换共享存储（Redis/PostgreSQL 表）或粘性会话；
 5. 增加进程级异常兜底与优雅退出时限（避免 SSE 连接拖住关闭）。

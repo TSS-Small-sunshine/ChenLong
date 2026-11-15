@@ -18,6 +18,22 @@ jobs:
     name: Test (Node 24)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,38 +58,61 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Prepare writable data directory
+        run: mkdir -p data && chmod 777 data
+
+      - name: Prepare temporary .env
+        run: |
+          cat > .env <<EOF
+          SESSION_SECRET=$(openssl rand -hex 32)
+          ENCRYPTION_KEY=$(openssl rand -hex 32)
+          ADMIN_USERNAME=admin
+          ADMIN_PASSWORD=AdminPass123
+          POSTGRES_USER=chenlong
+          POSTGRES_PASSWORD=ci_pg_password
+          POSTGRES_DB=chenlong
+          EOF
+
       - name: Validate compose file
-        run: |
-          cp .env.example .env
-          docker compose config -q
-          rm -f .env
+        run: docker compose config -q
 
-      - name: Build image
-        run: docker build --pull -t chenlong:ci .
+      - name: Start stack
+        run: docker compose up -d --build
 
-      - name: Run container smoke test
+      - name: Wait for application health
         run: |
-          docker run -d --name chenlong-ci -p 127.0.0.1:18080:3000 \
-            -e NODE_ENV=production \
-            -e SESSION_SECRET="$(openssl rand -hex 32)" \
-            -e ENCRYPTION_KEY="$(openssl rand -hex 32)" \
-            -e ADMIN_USERNAME=admin \
-            -e ADMIN_PASSWORD='AdminPass123' \
-            chenlong:ci
-          for i in $(seq 1 40); do
-            if curl -fsS http://127.0.0.1:18080/api/health >/dev/null 2>&1; then break; fi
+          ok=0
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
+              ok=1
+              echo "API 健康检查通过（${i}s）"
+              break
+            fi
             sleep 1
           done
-          echo '--- health ---'
-          curl -fsS http://127.0.0.1:18080/api/health
-          echo '--- home page index ---'
-          curl -fsS -o /dev/null -w 'HTTP %{http_code}\n' http://127.0.0.1:18080/
-          test "$(curl -fsS -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/)" = '200'
+          if [ "$ok" -ne 1 ]; then
+            echo "错误：应用在 90 秒内未通过 /api/health 健康检查"
+            exit 1
+          fi
+          curl -fsS http://127.0.0.1:3000/api/health
 
-      - name: Container logs
-        if: always()
-        run: docker logs chenlong-ci || true
+      - name: Verify pg_dump backup
+        run: |
+          docker compose exec -T app node scripts/backup-db.js
+          docker compose exec -T app sh -c 'ls -l /app/data/backups/ && head -n 2 /app/data/backups/*.sql'
 
-      - name: Cleanup
+      - name: Show stack status
         if: always()
-        run: docker rm -f chenlong-ci || true
+        run: docker compose ps
+
+      - name: Show stack logs
+        if: always()
+        run: docker compose logs
+
+      - name: Stop stack
+        if: always()
+        run: docker compose down -v
+
+      - name: Remove temporary .env
+        if: always()
+        run: rm -f .env

@@ -1,6 +1,33 @@
 name: chenlong
 
 services:
+  db:
+    image: postgres:17
+    container_name: chenlong-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-chenlong}
+      # 密码必须在 .env 中显式设置：缺失时 compose 直接报错，避免用默认弱口令初始化数据库
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 未设置：请复制 .env.example 为 .env 并填写}"
+      POSTGRES_DB: ${POSTGRES_DB:-chenlong}
+    volumes:
+      # 数据库文件持久化在 ./pgdata（已 gitignore）
+      - ./pgdata:/var/lib/postgresql/data
+    ports:
+      # 仅绑定本机回环，方便宿主机使用 psql 或一次性迁移脚本连接；生产环境可删除该映射
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chenlong} -d ${POSTGRES_DB:-chenlong}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   app:
     build:
       context: .
@@ -14,14 +41,19 @@ services:
     environment:
       NODE_ENV: production
       PORT: "3000"
-      DB_PATH: /app/data/chenlong.db
+      # 容器内走 compose 网络访问 db 服务；宿主机侧的 127.0.0.1:5432 仅供本地工具使用
+      DATABASE_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
       # 仅在可信反向代理（Nginx/Caddy）之后开启，避免 X-Forwarded-For 伪造；
       # 直接暴露端口时保持注释状态：
       # TRUST_PROXY: "1"
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       # 默认只绑定本机回环，由反向代理对外提供 HTTPS
       - "127.0.0.1:3000:3000"
     volumes:
+      # ./data 保留用于备份输出（data/backups/），数据库本身持久化在 ./pgdata
       - ./data:/app/data
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(function (r) { process.exit(r.ok ? 0 : 1) }).catch(function () { process.exit(1) })"]

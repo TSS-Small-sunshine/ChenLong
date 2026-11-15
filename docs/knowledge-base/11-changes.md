@@ -1,4 +1,4 @@
-> 变更记录整理于 2026-11-15，依据：本机 `D:\ICT\ChenLong` 第二批改动后的代码（逐文件阅读并标注行号）、`npm test` 实测（83 通过）、`npm run backup` 实测、临时库 + 3100 端口冒烟与无效密钥启动测试。与 [09-status-and-gaps.md](09-status-and-gaps.md) 第一轮审计对应；两者冲突时以本记录与 09 §7 为准。
+> 变更记录整理于 2026-11-15（第三批 PostgreSQL 迁移记录见 §8），依据：本机 `D:\ICT\ChenLong` 第二批改动后的代码（逐文件阅读并标注行号）、`npm test` 实测（83 通过）、`npm run backup` 实测、临时库 + 3100 端口冒烟与无效密钥启动测试。与 [09-status-and-gaps.md](09-status-and-gaps.md) 第一轮审计对应；两者冲突时以本记录与 09 §7 为准。
 
 # 11 变更记录（第二批：2026-11-15）
 
@@ -241,3 +241,70 @@ $env:ENCRYPTION_KEY="bad-key"; node server/app.js   # 断言 6：[FATAL] + 退�
 - 状态与风险总表：[09-status-and-gaps.md](09-status-and-gaps.md)（第一轮审计 + §7 第二批更新）
 - 安全机制细节：[07-security.md](07-security.md)；配置与备份：[08-config-and-ops.md](08-config-and-ops.md)
 - 接口契约：[04-api.md](04-api.md)；聊天/SSE：[06-chat-flow.md](06-chat-flow.md)
+---
+
+## 8. 第三批：PostgreSQL 迁移（2026-11-15，feat/postgres-migration）
+
+> §1–§7 是**第二批（SQLite 时代）**的完整记录，保留作历史；本批把运行时数据库从 SQLite（better-sqlite3，同步）迁移到 PostgreSQL（pg，异步/连接池），**数据层契约与运维方式都变了**。与前面冲突时以本节为准。
+
+### 8.1 本批目标与结论
+
+| 项 | 迁移前（第二批） | 迁移后（第三批） |
+|---|---|---|
+| 运行时数据库 | SQLite 单文件（better-sqlite3，同步 API，WAL） | **PostgreSQL**（`pg` Pool，全异步；独立数据库服务） |
+| 连接配置 | `DB_PATH` | `DATABASE_URL` 优先；或 `PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE`；`PG_POOL_MAX` |
+| 主键 | `INTEGER PRIMARY KEY AUTOINCREMENT` | `INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY` |
+| 唯一冲突 | `SQLITE_CONSTRAINT` | PG 错误码 **`23505`** |
+| 事务 | 同步 `db.transaction(fn)()` | `await getDb().transaction(async (tx) => ...)` |
+| 备份 | SQLite Online Backup API，`.db` + WAL/quick_check | **`pg_dump` plain SQL**，`data/backups/*.sql`；恢复 `psql -f` |
+| 部署 | 单容器 + `data/chenlong.db` 卷 | compose **`app` + `db`（postgres:17）**；`./pgdata` 卷；`pg_isready` healthcheck；`app` 等 db 健康 |
+| CI | test job 直接跑 `npm test`；Docker job `docker run` 单容器 | test job 起 **PostgreSQL 17 service** 并注入 `DATABASE_URL`；Docker job 用 **compose 起 db+app** 做健康检查 |
+| 旧依赖 | better-sqlite3 运行时依赖 | **仅 devDependencies**（保留给一次性迁移脚本读取旧库） |
+
+**结论**：运行时 SQLite 依赖已移除，数据访问全部改 `async/await`；备份、部署、CI 与文档同步更新。本机没有 PostgreSQL，**本批的 PG 运行验证以 CI/维护者环境为准（待核实）**；`npm test` 从"随时可跑"变为"需要可达的 PostgreSQL"。
+
+### 8.2 代码改动清单（第三批）
+
+| 文件/目录 | 改动 |
+|---|---|
+| `server/database/db.js` | 重写为 `pg` Pool 单例：`poolConfig()`（DATABASE_URL / PG* / PG_POOL_MAX）、`toPgSql()`（`?`→`$n`）、`prepare/get/all/run`（返回 Promise；`run` 返回 `{changes,rowCount,rows}`）、`transaction(async fn)`、`closeDb()`、`ping()`、`databaseSizeBytes()`（`pg_database_size`）；int8 解析器转 number |
+| `server/database/init.js` | SCHEMA 改 PG（IDENTITY 主键、`sessions.expire BIGINT`）；`initDatabase()` 全异步；默认设置 `INSERT ... ON CONFLICT (setting_key) DO NOTHING`；`seedAdmin` await 查/写；导出 `SETTINGS_DEFAULTS` 与 `SCHEMA_SQL`；CLI 改 async + `information_schema` 列表 |
+| `server/services/session-store.js` | `SqliteSessionStore` → **`PgSessionStore`**；表初始化懒加载 `_ensureSchema()`；`get/set/touch/destroy/all/clear/length` 内部 Promise + callback；`cleanup()`、`destroyByUserId()`、`destroyOthersByUserId()` 返回 Promise |
+| `server/middleware/auth.js` | `attachUser` 改为 async，`await getDb()...get()` |
+| `server/services/settings-store.js` | `readSettings/updateSettings/isRegistrationAllowed/isChatAllowed` 全部 async；upsert 放进 `await getDb().transaction` |
+| `server/services/chat-store.js` | 全部查询/写入函数 async；`INSERT ... RETURNING id` 取新消息/会话 id；`COUNT(*)` 直接 number |
+| `server/routes/*.js` | 所有 handler 改 async、DB 调用 await；唯一键冲突判断改 `err.code === '23505'`；保留原 try/catch+next(err)、状态码、错误码与中文文案 |
+| `server/app.js` | `start()` 改 async 并 `await initDatabase()`；`/api/health` 改 `await ping()`；退出/端口占用时 `await closeDb()`；会话 store 换 `PgSessionStore`；启动错误兜底 |
+| `scripts/backup-db.js` | 改为 `pg_dump`：拆 `DATABASE_URL` 为 `PG*` 子进程环境（密码不进命令行）、`--format=plain --no-owner --no-privileges`、校验 dump 文件头、输出 `data/backups/chenlong-*.sql`；参数 `--out/--database-url/--force` |
+| `package.json` | 运行时依赖：去 better-sqlite3、加 `pg@^8.23.1`；better-sqlite3 移入 devDependencies；脚本加 `db:init`、`migrate:sqlite-to-pg`；描述改为 Express + PostgreSQL |
+| `.env.example` | 去 `DB_PATH`；加 `DATABASE_URL`、PG* 变量、`PG_POOL_MAX`、`POSTGRES_USER/PASSWORD/DB` |
+| Docker / compose / CI | Dockerfile 去掉 SQLite 编译链需求（pg 为纯 JS）；compose 增加 `postgres:17` db 服务、`./pgdata` 卷、`pg_isready` healthcheck、`app.depends_on db healthy`、`DATABASE_URL`；CI test job 加 PG service、Docker job 改 compose 冒烟 |
+| 测试 | 测试需 PostgreSQL（CI service / 本地 compose db）；迁移后测试套件与断言有调整（本批未在无 PG 机器上运行，**数量与结果以 CI 为准，待核实**） |
+| 文档 | 03/08 重写为 PostgreSQL；01/02/07/10/12/09/README/CONTRIBUTING/SECURITY/DEPLOY-DOCKER 同步；本文件新增 §8 |
+
+### 8.3 数据迁移（旧 SQLite → PostgreSQL）
+
+- 入口：`npm run migrate:sqlite-to-pg`（`scripts/migrate-sqlite-to-pg.js`，194 行）。参数：`--sqlite <旧库路径>`、`--database-url <连接串>`、`--dry-run`、`--allow-existing`；默认读 `DB_PATH`/`data/chenlong.db` 与 `DATABASE_URL`；
+- 行为：better-sqlite3 只读旧库 → 迁移 users/api_providers/models/conversations/messages/settings 六表；保留原始 id（`OVERRIDING SYSTEM VALUE`）并用 `setval` 对齐 IDENTITY；`sessions` 不迁移；目标库 `users` 非空默认拒绝（退出码 2，`--allow-existing` 才合并）；`--dry-run` 只统计行数；
+- 迁移前置：备份旧 `data/chenlong.db(-wal/-shm)` 与 `ENCRYPTION_KEY`；迁移后逐表核对行数与插入冒烟；
+- 迁移完成后：`.env` 删除 `DB_PATH`、配置 `DATABASE_URL`；旧 SQLite 文件归档，确认稳定后再清理。
+
+### 8.4 验证现状与待办
+
+| 项 | 状态 |
+|---|---|
+| 本机 `node --check` | 本批文档更新未改 JS；对 `server/`、`scripts/`、`test/` 共 43 个 JS 文件执行 `node --check`，**43/43 通过**（含迁移后的 db.js/init.js/session-store.js/routes/*.js） |
+| 本机跑 `npm test` | ❌ 本机无 PostgreSQL，按任务约定不跑；由 CI 的 PG service 验证 |
+| PG 冒烟（health/登录/后台/聊天） | 待 CI/维护者环境验证（本机无 PG） |
+| 迁移脚本 / 数据搬运 | 脚本已落地（`scripts/migrate-sqlite-to-pg.js`，194 行，支持 `--dry-run`/`--allow-existing`、保留 id+setval、sessions 不迁）；**本机无 PG，未实际演练（待核实）** |
+| 旧 SQLite 文件清理 | 未删；先归档并确认迁移成功 |
+| 文档残留 SQLite 表述 | 本轮已全仓扫描并更新（历史章节保留但明确标注为迁移前快照） |
+
+### 8.5 仍未完成 / 后续建议
+
+1. **迁移演练**：脚本已实现；在真实 PG 上先 `--dry-run` 再正式迁移，做行数核对 + 插入冒烟 + 密文解密验证（本机无 PG，待 CI/维护者环境执行）；
+2. **测试套件切 PG 后的稳定性**：本地无 PG，只能靠 CI；建议本地开发文档固化 `docker compose up -d db` 流程（已写入 08/CONTRIBUTING）；
+3. **PG 备份自动化**：`pg_dump` 已实现但有三个待办——定时任务、备份保留/清理策略、备份加密与异地；
+4. **会话按用户失效性能**：`sessions` 全表扫描（见 03 §12），会话量大时加 `user_id` 列/索引；
+5. **PG 连接池与多实例**：限流仍是进程内存态；多实例前需换共享限流存储；
+6. **文档行号漂移**：迁移改动大量文件后，知识库里的行号引用需在合入前做一次抽查（语义优先）。

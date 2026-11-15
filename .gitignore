@@ -5,6 +5,7 @@ data/*.db*
 data/*.sqlite*
 data/.dev-secrets.json
 data/backups/
+pgdata/
 npm-debug.log*
 yarn-error.log*
 .DS_Store

@@ -84,7 +84,7 @@ function readBody(req) {
 
 router.use(requireAuth, requireAdmin);
 
-router.get('/', (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const keyword = typeof req.query.keyword === 'string' ? req.query.keyword.trim() : '';
     const status = readEnumFilter(req.query.status, STATUS_VALUES);
@@ -112,8 +112,9 @@ router.get('/', (req, res, next) => {
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const db = getDb();
-    const total = db.prepare(`SELECT COUNT(*) AS total FROM users u ${where}`).get(...params).total;
-    const rows = db
+    const totalRow = await db.prepare(`SELECT COUNT(*) AS total FROM users u ${where}`).get(...params);
+    const total = totalRow.total;
+    const rows = await db
       .prepare(`${SELECT_USER} ${where} ORDER BY u.id ASC LIMIT ? OFFSET ?`)
       .all(...params, paging.pageSize, paging.offset);
 
@@ -123,11 +124,11 @@ router.get('/', (req, res, next) => {
   }
 });
 
-router.get('/:id', (req, res, next) => {
+router.get('/:id', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return fail(res, 404, 'NOT_FOUND', '用户不存在');
-    const row = getDb().prepare(`${SELECT_USER_DETAIL} WHERE u.id = ?`).get(id);
+    const row = await getDb().prepare(`${SELECT_USER_DETAIL} WHERE u.id = ?`).get(id);
     if (!row) return fail(res, 404, 'NOT_FOUND', '用户不存在');
     return res.json({ item: toItem(row) });
   } catch (err) {
@@ -135,13 +136,13 @@ router.get('/:id', (req, res, next) => {
   }
 });
 
-router.patch('/:id', (req, res, next) => {
+router.patch('/:id', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return fail(res, 404, 'NOT_FOUND', '用户不存在');
 
     const db = getDb();
-    const target = db.prepare('SELECT id, role, status FROM users WHERE id = ?').get(id);
+    const target = await db.prepare('SELECT id, role, status FROM users WHERE id = ?').get(id);
     if (!target) return fail(res, 404, 'NOT_FOUND', '用户不存在');
 
     const body = readBody(req);
@@ -171,22 +172,22 @@ router.patch('/:id', (req, res, next) => {
     const losesActiveAdmin =
       target.role === 'admin' && target.status === 'active' && (nextRole !== 'admin' || nextStatus !== 'active');
     if (losesActiveAdmin) {
-      const others = db
+      const othersRow = await db
         .prepare("SELECT COUNT(*) AS total FROM users WHERE role = 'admin' AND status = 'active' AND id <> ?")
-        .get(target.id).total;
-      if (others === 0) return fail(res, 400, 'LAST_ADMIN', '至少保留一个启用的管理员');
+        .get(target.id);
+      if (othersRow.total === 0) return fail(res, 400, 'LAST_ADMIN', '至少保留一个启用的管理员');
     }
 
     const keys = Object.keys(changes);
     if (keys.length > 0) {
       const assignments = keys.map((key) => `${key} = ?`).join(', ');
-      db.prepare(`UPDATE users SET ${assignments} WHERE id = ?`).run(
+      await db.prepare(`UPDATE users SET ${assignments} WHERE id = ?`).run(
         ...keys.map((key) => changes[key]),
         target.id
       );
     }
 
-    const row = db.prepare(`${SELECT_USER_DETAIL} WHERE u.id = ?`).get(target.id);
+    const row = await db.prepare(`${SELECT_USER_DETAIL} WHERE u.id = ?`).get(target.id);
     return res.json({ item: toItem(row) });
   } catch (err) {
     return next(err);
@@ -199,7 +200,8 @@ router.post('/:id/password', async (req, res, next) => {
     if (!id) return fail(res, 404, 'NOT_FOUND', '用户不存在');
 
     const db = getDb();
-    if (!db.prepare('SELECT id FROM users WHERE id = ?').get(id)) {
+    const target = await db.prepare('SELECT id FROM users WHERE id = ?').get(id);
+    if (!target) {
       return fail(res, 404, 'NOT_FOUND', '用户不存在');
     }
 
@@ -213,14 +215,16 @@ router.post('/:id/password', async (req, res, next) => {
     }
 
     const passwordHash = await bcrypt.hash(password, BCRYPT_COST);
-    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, id);
+    await db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, id);
 
     // 重置密码后目标用户此前已登录的会话全部失效（旧会话不能继续使用新密码之外的凭据）
     try {
       const store = req.sessionStore;
       if (store && typeof store.destroyByUserId === 'function') {
         const selfReset = id === req.user.id && typeof store.destroyOthersByUserId === 'function';
-        const removed = selfReset ? store.destroyOthersByUserId(id, req.sessionID) : store.destroyByUserId(id);
+        const removed = selfReset
+          ? await store.destroyOthersByUserId(id, req.sessionID)
+          : await store.destroyByUserId(id);
         console.log('[users] 已重置用户 ' + id + ' 的密码，失效其会话 ' + removed + ' 条');
       }
     } catch (err) {

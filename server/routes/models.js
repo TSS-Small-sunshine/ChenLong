@@ -49,7 +49,7 @@ function toModel(row) {
   };
 }
 
-function getModelRow(id) {
+async function getModelRow(id) {
   return getDb().prepare(`${SELECT_MODEL} WHERE m.id = ?`).get(id);
 }
 
@@ -76,10 +76,10 @@ function readEnabled(raw, fallback) {
 }
 
 function isUniqueViolation(err) {
-  return Boolean(err) && typeof err.code === 'string' && err.code.startsWith('SQLITE_CONSTRAINT');
+  return Boolean(err) && err.code === '23505';
 }
 
-router.get('/', (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const where = [];
     const params = [];
@@ -101,18 +101,18 @@ router.get('/', (req, res, next) => {
     else if (req.query.status === 'disabled') where.push('m.enabled = 0');
 
     const sql = `${SELECT_MODEL}${where.length > 0 ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY m.id DESC`;
-    const items = getDb().prepare(sql).all(...params).map(toModel);
+    const items = (await getDb().prepare(sql).all(...params)).map(toModel);
     return res.json({ items });
   } catch (err) {
     return next(err);
   }
 });
 
-router.get('/:id', (req, res, next) => {
+router.get('/:id', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return fail(res, 404, 'NOT_FOUND', '模型不存在');
-    const row = getModelRow(id);
+    const row = await getModelRow(id);
     if (!row) return fail(res, 404, 'NOT_FOUND', '模型不存在');
     return res.json({ item: toModel(row) });
   } catch (err) {
@@ -120,14 +120,14 @@ router.get('/:id', (req, res, next) => {
   }
 });
 
-router.post('/', (req, res, next) => {
+router.post('/', async (req, res, next) => {
   try {
     const body = req.body || {};
     const providerId = parseId(body.providerId);
     if (!providerId) return fail(res, 400, 'VALIDATION_ERROR', '请选择 API 服务');
 
     const db = getDb();
-    if (!db.prepare('SELECT id FROM api_providers WHERE id = ?').get(providerId)) {
+    if (!(await db.prepare('SELECT id FROM api_providers WHERE id = ?').get(providerId))) {
       return fail(res, 400, 'VALIDATION_ERROR', 'API 服务不存在');
     }
 
@@ -143,48 +143,47 @@ router.post('/', (req, res, next) => {
       return fail(res, 400, 'VALIDATION_ERROR', '请先启用该模型再设为默认');
     }
 
-    if (db.prepare('SELECT id FROM models WHERE provider_id = ? AND model_id = ?').get(providerId, modelId.value)) {
+    if (await db.prepare('SELECT id FROM models WHERE provider_id = ? AND model_id = ?').get(providerId, modelId.value)) {
       return fail(res, 409, 'MODEL_EXISTS', '该 API 下已存在同名模型');
     }
 
     const now = new Date().toISOString();
-    const create = db.transaction(() => {
-      if (isDefault.value) db.prepare('UPDATE models SET is_default = 0 WHERE is_default = 1').run();
-      return db
-        .prepare(
-          `INSERT INTO models (provider_id, model_id, display_name, enabled, is_default, status, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`
-        )
-        .run(
-          providerId,
-          modelId.value,
-          displayName.value,
-          enabled.value ? 1 : 0,
-          isDefault.value ? 1 : 0,
-          STATUS_DISCOVERED,
-          now
-        );
+    const create = () => db.transaction(async (tx) => {
+      if (isDefault.value) await tx.run('UPDATE models SET is_default = 0 WHERE is_default = 1');
+      return tx.run(
+        `INSERT INTO models (provider_id, model_id, display_name, enabled, is_default, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         RETURNING id`,
+        providerId,
+        modelId.value,
+        displayName.value,
+        enabled.value ? 1 : 0,
+        isDefault.value ? 1 : 0,
+        STATUS_DISCOVERED,
+        now
+      );
     });
 
     let info;
     try {
-      info = create();
+      info = await create();
     } catch (err) {
       if (isUniqueViolation(err)) return fail(res, 409, 'MODEL_EXISTS', '该 API 下已存在同名模型');
       throw err;
     }
 
-    return res.status(201).json({ item: toModel(getModelRow(info.lastInsertRowid)) });
+    const createdId = info.rows[0] ? info.rows[0].id : null;
+    return res.status(201).json({ item: toModel(await getModelRow(createdId)) });
   } catch (err) {
     return next(err);
   }
 });
 
-router.patch('/:id', (req, res, next) => {
+router.patch('/:id', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return fail(res, 404, 'NOT_FOUND', '模型不存在');
-    const existing = getModelRow(id);
+    const existing = await getModelRow(id);
     if (!existing) return fail(res, 404, 'NOT_FOUND', '模型不存在');
 
     const body = req.body || {};
@@ -195,7 +194,7 @@ router.patch('/:id', (req, res, next) => {
       const modelId = readModelId(body.modelId);
       if (!modelId.ok) return fail(res, 400, 'VALIDATION_ERROR', modelId.message);
       if (modelId.value !== existing.model_id) {
-        const clash = getDb()
+        const clash = await getDb()
           .prepare('SELECT id FROM models WHERE provider_id = ? AND model_id = ? AND id <> ?')
           .get(existing.provider_id, modelId.value, id);
         if (clash) return fail(res, 409, 'MODEL_EXISTS', '该 API 下已存在同名模型');
@@ -218,20 +217,20 @@ router.patch('/:id', (req, res, next) => {
     }
 
     if (updates.length > 0) {
-      getDb().prepare(`UPDATE models SET ${updates.join(', ')} WHERE id = ?`).run(...params, id);
+      await getDb().prepare(`UPDATE models SET ${updates.join(', ')} WHERE id = ?`).run(...params, id);
     }
 
-    return res.json({ item: toModel(getModelRow(id)) });
+    return res.json({ item: toModel(await getModelRow(id)) });
   } catch (err) {
     return next(err);
   }
 });
 
-router.delete('/:id', (req, res, next) => {
+router.delete('/:id', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return fail(res, 404, 'NOT_FOUND', '模型不存在');
-    const info = getDb().prepare('DELETE FROM models WHERE id = ?').run(id);
+    const info = await getDb().prepare('DELETE FROM models WHERE id = ?').run(id);
     if (info.changes === 0) return fail(res, 404, 'NOT_FOUND', '模型不存在');
     return res.status(204).end();
   } catch (err) {
@@ -239,27 +238,27 @@ router.delete('/:id', (req, res, next) => {
   }
 });
 
-router.patch('/:id/default', (req, res, next) => {
+router.patch('/:id/default', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return fail(res, 404, 'NOT_FOUND', '模型不存在');
-    const existing = getModelRow(id);
+    const existing = await getModelRow(id);
     if (!existing) return fail(res, 404, 'NOT_FOUND', '模型不存在');
     if (existing.enabled !== 1) return fail(res, 400, 'VALIDATION_ERROR', '请先启用该模型再设为默认');
 
     const db = getDb();
-    db.transaction(() => {
-      db.prepare('UPDATE models SET is_default = 0 WHERE is_default = 1').run();
-      db.prepare('UPDATE models SET is_default = 1 WHERE id = ?').run(id);
-    })();
+    await db.transaction(async (tx) => {
+      await tx.run('UPDATE models SET is_default = 0 WHERE is_default = 1');
+      await tx.run('UPDATE models SET is_default = 1 WHERE id = ?', id);
+    });
 
-    return res.json({ item: toModel(getModelRow(id)) });
+    return res.json({ item: toModel(await getModelRow(id)) });
   } catch (err) {
     return next(err);
   }
 });
 
-router.patch('/:id/status', (req, res, next) => {
+router.patch('/:id/status', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return fail(res, 404, 'NOT_FOUND', '模型不存在');
@@ -268,11 +267,11 @@ router.patch('/:id/status', (req, res, next) => {
 
     const db = getDb();
     const info = body.enabled
-      ? db.prepare('UPDATE models SET enabled = 1 WHERE id = ?').run(id)
-      : db.prepare('UPDATE models SET enabled = 0, is_default = 0 WHERE id = ?').run(id);
+      ? await db.prepare('UPDATE models SET enabled = 1 WHERE id = ?').run(id)
+      : await db.prepare('UPDATE models SET enabled = 0, is_default = 0 WHERE id = ?').run(id);
     if (info.changes === 0) return fail(res, 404, 'NOT_FOUND', '模型不存在');
 
-    return res.json({ item: toModel(getModelRow(id)) });
+    return res.json({ item: toModel(await getModelRow(id)) });
   } catch (err) {
     return next(err);
   }
@@ -282,11 +281,11 @@ router.post('/:id/test', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return fail(res, 404, 'NOT_FOUND', '模型不存在');
-    const row = getModelRow(id);
+    const row = await getModelRow(id);
     if (!row) return fail(res, 404, 'NOT_FOUND', '模型不存在');
 
     const db = getDb();
-    const provider = db.prepare('SELECT id, base_url, api_key_encrypted FROM api_providers WHERE id = ?').get(row.provider_id);
+    const provider = await db.prepare('SELECT id, base_url, api_key_encrypted FROM api_providers WHERE id = ?').get(row.provider_id);
     if (!provider) return fail(res, 404, 'NOT_FOUND', '模型不存在');
 
     let apiKey;
@@ -294,7 +293,7 @@ router.post('/:id/test', async (req, res, next) => {
       apiKey = decrypt(provider.api_key_encrypted);
     } catch (err) {
       console.error('[models] API Key 解密失败：', err.message);
-      db.prepare("UPDATE models SET last_tested_at = ?, status = 'unavailable' WHERE id = ?").run(
+      await db.prepare("UPDATE models SET last_tested_at = ?, status = 'unavailable' WHERE id = ?").run(
         new Date().toISOString(),
         id
       );
@@ -305,12 +304,12 @@ router.post('/:id/test', async (req, res, next) => {
     const now = new Date().toISOString();
 
     if (!result.ok) {
-      db.prepare("UPDATE models SET last_tested_at = ?, status = 'unavailable' WHERE id = ?").run(now, id);
+      await db.prepare("UPDATE models SET last_tested_at = ?, status = 'unavailable' WHERE id = ?").run(now, id);
       return res.json({ ok: false, latencyMs: result.latencyMs, message: result.message });
     }
 
     const found = result.models.includes(row.model_id);
-    db.prepare('UPDATE models SET last_tested_at = ?, status = ? WHERE id = ?').run(
+    await db.prepare('UPDATE models SET last_tested_at = ?, status = ? WHERE id = ?').run(
       now,
       found ? 'available' : 'unavailable',
       id

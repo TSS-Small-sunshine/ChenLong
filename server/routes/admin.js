@@ -1,6 +1,6 @@
 const express = require('express');
 
-const { getDb, resolveDatabaseFile } = require('../database/db');
+const { getDb, databaseSizeBytes } = require('../database/db');
 const { requireAuth } = require('../middleware/auth');
 const { requireAdmin } = require('../middleware/admin');
 const pkg = require('../../package.json');
@@ -61,20 +61,12 @@ function toConversationItem(row) {
   };
 }
 
-function dbSizeBytes() {
-  try {
-    return require('fs').statSync(resolveDatabaseFile()).size;
-  } catch (err) {
-    return 0;
-  }
-}
-
 router.use(requireAuth, requireAdmin);
 
-router.get('/stats', (req, res, next) => {
+router.get('/stats', async (req, res, next) => {
   try {
     const db = getDb();
-    const counters = db
+    const counters = await db
       .prepare(
         `SELECT
            (SELECT COUNT(*) FROM users) AS user_count,
@@ -84,7 +76,7 @@ router.get('/stats', (req, res, next) => {
       )
       .get();
 
-    const recentProviders = db
+    const recentProviders = (await db
       .prepare(
         `SELECT p.id, p.name, p.base_url, p.created_at,
                 (SELECT COUNT(*) FROM models m WHERE m.provider_id = p.id) AS model_count
@@ -92,8 +84,7 @@ router.get('/stats', (req, res, next) => {
          ORDER BY p.id DESC
          LIMIT ?`
       )
-      .all(RECENT_LIMIT)
-      .map((row) => ({
+      .all(RECENT_LIMIT)).map((row) => ({
         id: row.id,
         name: row.name,
         baseUrl: row.base_url,
@@ -102,7 +93,7 @@ router.get('/stats', (req, res, next) => {
       }));
 
     // 最近活跃：按该模型最近一次会话活动时间倒序，未使用过的模型排在后面
-    const recentModels = db
+    const recentModels = (await db
       .prepare(
         `SELECT * FROM (
            SELECT m.id AS id, m.model_id AS model_id, m.display_name AS display_name,
@@ -114,8 +105,7 @@ router.get('/stats', (req, res, next) => {
          ORDER BY (last_used_at IS NULL) ASC, last_used_at DESC, id DESC
          LIMIT ?`
       )
-      .all(RECENT_LIMIT)
-      .map((row) => ({
+      .all(RECENT_LIMIT)).map((row) => ({
         id: row.id,
         modelId: row.model_id,
         displayName: row.display_name || '',
@@ -137,7 +127,7 @@ router.get('/stats', (req, res, next) => {
         version: pkg.version,
         nodeVersion: process.version,
         uptimeSeconds: Math.round(process.uptime()),
-        dbSizeBytes: dbSizeBytes(),
+        dbSizeBytes: await databaseSizeBytes(),
       },
     });
   } catch (err) {
@@ -145,7 +135,7 @@ router.get('/stats', (req, res, next) => {
   }
 });
 
-router.get('/conversations', (req, res, next) => {
+router.get('/conversations', async (req, res, next) => {
   try {
     const keyword = typeof req.query.keyword === 'string' ? req.query.keyword.trim() : '';
     const paging = readPagination(req.query, PAGE_SIZE_DEFAULT);
@@ -170,10 +160,10 @@ router.get('/conversations', (req, res, next) => {
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const db = getDb();
-    const total = db
+    const total = (await db
       .prepare(`SELECT COUNT(*) AS total FROM conversations c JOIN users u ON u.id = c.user_id ${where}`)
-      .get(...params).total;
-    const rows = db
+      .get(...params)).total;
+    const rows = await db
       .prepare(`${SELECT_CONVERSATION} ${where} ORDER BY c.updated_at DESC, c.id DESC LIMIT ? OFFSET ?`)
       .all(...params, paging.pageSize, paging.offset);
 
@@ -183,7 +173,7 @@ router.get('/conversations', (req, res, next) => {
   }
 });
 
-router.get('/conversations/:id/messages', (req, res, next) => {
+router.get('/conversations/:id/messages', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return fail(res, 404, 'NOT_FOUND', '会话不存在');
@@ -192,15 +182,16 @@ router.get('/conversations/:id/messages', (req, res, next) => {
     if (!paging.ok) return fail(res, 400, 'VALIDATION_ERROR', paging.message);
 
     const db = getDb();
-    const conversation = db.prepare(`${SELECT_CONVERSATION} WHERE c.id = ?`).get(id);
+    const conversation = await db.prepare(`${SELECT_CONVERSATION} WHERE c.id = ?`).get(id);
     if (!conversation) return fail(res, 404, 'NOT_FOUND', '会话不存在');
 
-    const items = db
-      .prepare(
-        'SELECT id, role, content, created_at FROM messages WHERE conversation_id = ? ORDER BY id ASC LIMIT ? OFFSET ?'
-      )
-      .all(id, paging.pageSize, paging.offset)
-      .map((row) => ({ id: row.id, role: row.role, content: row.content, createdAt: row.created_at }));
+    const items = (
+      await db
+        .prepare(
+          'SELECT id, role, content, created_at FROM messages WHERE conversation_id = ? ORDER BY id ASC LIMIT ? OFFSET ?'
+        )
+        .all(id, paging.pageSize, paging.offset)
+    ).map((row) => ({ id: row.id, role: row.role, content: row.content, createdAt: row.created_at }));
 
     const item = toConversationItem(conversation);
     return res.json({

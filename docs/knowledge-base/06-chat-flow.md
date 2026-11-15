@@ -171,6 +171,8 @@ data: [DONE]
 2. 助手消息只在**成功**或**断连且有部分内容**时落库；失败不落；
 3. `conversations.updated_at` 与 `model_id` 只在成功/断连部分落库时更新（`touchConversation`）；
 4. 用户消息与助手消息是两条独立 INSERT，**没有包在一个事务里**；进程在校验后崩溃会留下"半个回合"（可接受，数据库一致）；
+
+> 第三批起持久化在 **PostgreSQL**（`messages` 表，IDENTITY 主键）；INSERT 使用 `RETURNING id` 取新消息 id，所有 DB 调用都是 async/await。
 5. 重试同一请求会**再写一条用户消息**（接口无幂等键）——前端不要盲目自动重试聊天请求（CSRF 403 的重试发生在写入之前，是安全的）。
 
 ## 11. 已知限制与改进建议

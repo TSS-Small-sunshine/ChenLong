@@ -1,8 +1,8 @@
 'use strict';
 
 /**
- * 应用层 HTTP 集成测试（可选覆盖，但本机可稳定运行，保留为回归用例）。
- * - node:child_process 启动 server/app.js，临时 DB_PATH + 临时端口，绝不碰真实 data/chenlong.db
+ * 应用层 HTTP 集成测试（PostgreSQL 版）。
+ * - node:child_process 启动 server/app.js，使用测试专用 DATABASE_URL + 临时端口
  * - 覆盖：/api no-store、CSRF 拦截、注册、双会话、本人改密踢其它会话、管理员重置密码踢全部会话
  */
 
@@ -15,10 +15,9 @@ const net = require('node:net');
 const path = require('node:path');
 
 const {
+  installTestDatabase,
   TEST_ENCRYPTION_KEY_HEX,
   TEST_SESSION_SECRET,
-  createTempDir,
-  removeDir,
 } = require('../helpers/temp-db');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
@@ -30,9 +29,9 @@ const USER_PASSWORD = 'UserPass123';
 const USER_PASSWORD_CHANGED = 'NewPass456';
 const USER_PASSWORD_RESET = 'ResetPass789';
 
+let temp = null;
 let child = null;
 let port = 0;
-let tempDir = '';
 let baseUrl = '';
 let serverLog = '';
 
@@ -107,7 +106,7 @@ function createClient() {
   return { request, json, csrf };
 }
 
-async function waitForHealth(timeoutMs = 20000) {
+async function waitForHealth(timeoutMs = 30000) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     if (child && child.exitCode !== null) {
@@ -125,7 +124,7 @@ async function waitForHealth(timeoutMs = 20000) {
 }
 
 before(async () => {
-  tempDir = createTempDir('chenlong-app-it-');
+  temp = await installTestDatabase('chenlong_test_app_');
   port = await findFreePort();
   baseUrl = 'http://127.0.0.1:' + port;
 
@@ -134,7 +133,7 @@ before(async () => {
     env: {
       ...process.env,
       PORT: String(port),
-      DB_PATH: path.join(tempDir, 'chenlong.db'),
+      DATABASE_URL: temp.url,
       NODE_ENV: 'development',
       ADMIN_USERNAME,
       ADMIN_PASSWORD,
@@ -166,7 +165,8 @@ after(async () => {
       }
     }
   }
-  removeDir(tempDir);
+  child = null;
+  if (temp) await temp.cleanup();
 });
 
 test('/api 响应带 Cache-Control: no-store，静态页面不被强制 no-store', async () => {

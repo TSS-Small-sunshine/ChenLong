@@ -21,7 +21,11 @@
 | 守卫 guard | 前端 `body[data-guard="auth|admin"]` + `public/js/guard.js` 的页面级跳转保护 | 不是服务端鉴权 |
 | CL | 前端全局公共库（`public/js/app.js` 暴露 `window.CL`） | — |
 | SSE | Server-Sent Events，本项目的流式聊天协议 | 帧是"服务端自定义 JSON"，不是 OpenAI 原始事件 |
-| WAL | SQLite 预写日志模式，`-wal`/`-shm` 文件 | 备份时容易漏 |
+| PostgreSQL / PG | 独立关系型数据库服务；进程内用 `pg` 连接池访问 | 不再是本地文件数据库 |
+| DSN / DATABASE_URL | PostgreSQL 连接串 | 含密码，不要写进文档或提交 |
+| 连接池 | `pg.Pool`，默认 10 条连接（`PG_POOL_MAX`） | 多实例 × 池上限别超 PG `max_connections` |
+| 占位符转换 | SQL 统一写 `?`，数据层自动转 `$1..$n` | 不要手写 `$1` |
+| IDENTITY | PostgreSQL 自增主键（`GENERATED ALWAYS AS IDENTITY`） | 插入不再返回 `lastInsertRowid`，需要 id 用 `RETURNING id` |
 | dev-secrets | `data/.dev-secrets.json`，开发环境自动生成的密钥文件（明文） | 生产禁用 |
 | 迁移 migration | 表结构版本化变更脚本 | **本项目没有**，改表靠手工 |
 
@@ -29,14 +33,14 @@
 
 | 值 | 含义 | 位置 | 详见 |
 |---|---|---|---|
-| 7 天 | 会话有效期 | app.js:22、session-store.js:5 | [07](07-security.md) |
+| 7 天 | 会话有效期 | app.js:23、session-store.js:5 | [07](07-security.md) |
 | bcrypt cost 10 | 密码哈希强度 | auth.js:16、profile.js、users.js | — |
 | 300 / 60s / IP | 全局限流（仅写请求） | app.js:26 | [04](04-api.md) |
 | 10 / 5min / IP | 登录限流 | app.js:27 | 同上 |
 | 5 / 10min / IP | 注册限流 | app.js:28 | 同上 |
 | 10 / 60s / 管理员 | 重置密码限流 | app.js:29 | 同上 |
 | 20 / 60s / 用户 | 聊天限流 | app.js:30 | 同上 |
-| 1 MB | 请求体上限 | app.js:119–120 | — |
+| 1 MB | 请求体上限 | app.js:134–135 | — |
 | 20 条 | 聊天上下文消息数 | chat-store.js:4 | [06](06-chat-flow.md) |
 | 4000 字 | 单条用户消息上限 | chat-store.js:8 | — |
 | 40 字 / 20 码位 | 会话标题上限 / 自动标题截取 | chat-store.js:6–7 | — |
@@ -68,11 +72,13 @@
 | 校验风格 | `readXxx()` 返回 `{ok:true,value}` 或 `{ok:false,message}`；路由开头集中校验 |
 | 错误返回 | 本文件内 `fail(res, status, code, message)`（8 个 routes 各有一份，重复但一致） |
 | 日志前缀 | `[chat]` / `[db]` / `[error]` / `[WARN]` / `[FATAL]` / `[session-store]` / `[upstream-guard]` / `[provider-client]` / `[chat-client]`；文案中文 |
-| 事务 | 多条关联写必须 `db.transaction` |
+| 事务 | 多条关联写必须 `await getDb().transaction(async (tx) => { ... })` |
 | 时间 | `new Date().toISOString()`（UTC ISO 字符串） |
 | 布尔 | 库内 0/1，接口层 boolean |
 | 参数化 | 禁止字符串拼接 SQL/用户输入；LIKE 需 `escapeLike` + `ESCAPE '\'` |
 | 单例 | 数据库连接、加密 key 缓存、限流 Map、session store 均进程级单例；无 DI 容器 |
+| 异步 | 路由 handler 全部 `async`，DB 调用前 `await`；`settings-store`/`chat-store`/`session-store` 导出 async 函数 | 详见下方 |
+| SQL 占位符 | 统一写 `?`，由 `db.js` 的 `toPgSql()` 自动转 `$1..$n`；唯一冲突码 `23505` | `db.js:35–39` |
 | 未使用的代码 | `server/routes/settings.js` 里的 `readBody` 等小工具是局部实现；没有 lint 配置 |
 
 ### 3.2 前端（public/）
@@ -100,9 +106,9 @@
 
 **加一张表 / 改表**
 
-1. 改 `server/database/init.js` 的 `SCHEMA_SQL`（`CREATE TABLE IF NOT EXISTS` 只对新库生效）；
-2. 老库需手写迁移（`ALTER TABLE` / 重建表），并更新 [03](03-database.md)；
-3. 补索引；检查级联删除语义；备份后演练。
+1. 改 `server/database/init.js` 的 `SCHEMA_SQL`（`CREATE TABLE IF NOT EXISTS` 只对新库生效；主键用 `INTEGER GENERATED ALWAYS AS IDENTITY`）；
+2. 老库需手写 PG 迁移（`ALTER TABLE ... ADD COLUMN` / 重建表），先在 `pg_dump` 备份库演练，并更新 [03](03-database.md)；
+3. 补索引；检查级联删除语义；备份后演练（`npm run backup` → `.sql`）。
 
 **加一个环境变量**
 
@@ -120,12 +126,12 @@
 
 | 命令 | 说明 |
 |---|---|
-| `npm test` | node:test 全量（core 65 + features 18 = 83 个用例，约 5s） |
+| `npm test` | node:test 全量（core 65 + features 18 = 83 个用例）；**需要可达的 PostgreSQL**（CI 用 service 容器） |
 | `npm run test:core` | 只跑单元测试 |
-| `npm run backup`（`node scripts/backup-db.js`） | 一致性备份到 `data/backups/`（WAL 安全 + `quick_check` 校验；支持 `--out/--db/--force`） |
+| `npm run backup`（`node scripts/backup-db.js`） | `pg_dump` 一致性备份到 `data/backups/*.sql`（支持 `--out/--database-url/--force`；需要 `pg_dump`/postgresql-client） |
 | `node --check <file>` | 单文件语法检查（本项目仍无 lint 脚本） |
 
-- 新功能/修 bug 至少补一个测试；测试必须使用 `os.tmpdir()` 临时库与随机端口，**禁止读写真实 `data/chenlong.db`**；
+- 新功能/修 bug 至少补一个测试；测试需要可达的 PostgreSQL（CI service / 本地 `docker compose up -d db`），使用**独立测试库/schema**，禁止连生产库；
 - 备份目录 `data/backups/` 已 gitignore；`ENCRYPTION_KEY` 必须与备份分开离线保管。
 
 ## 4. 已知不一致与坑（跨文档汇总）
@@ -160,7 +166,7 @@
 | 7 | 聊天接口无幂等 | 重发会写两条用户消息 | ⚠️ 仍存在：前端不要自动重试 |
 | 8 | 管理员重置密码/改角色不踢会话 | 旧会话可继续用 | 部分修复：**重置密码已踢掉全部会话**；改角色/禁用仍在下次请求生效 |
 | 9 | 匿名取 CSRF token 会产生 `sessions` 行 | 表里 1 条会话 ≠ 有人登录 | ⚠️ 预期行为，排查时别误判 |
-| 10 | `dbSizeBytes` 不含 WAL/SHM | 仪表盘低估占用 | ⚠️ 仍存在：用文件系统统计 |
+| 10 | 数据库体积口径 | `dbSizeBytes` 现为 `pg_database_size()`（含索引/TOAST，随死元组波动） | ℹ️ 口径已变：业务数据量需逐表 `pg_total_relation_size` 统计 |
 
 ## 5. 文档维护约定
 

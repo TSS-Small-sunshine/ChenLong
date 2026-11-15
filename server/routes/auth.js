@@ -41,7 +41,7 @@ function startSession(req, userId) {
 
 router.post('/register', async (req, res, next) => {
   try {
-    if (!isRegistrationAllowed()) return fail(res, 403, 'REGISTER_DISABLED', '管理员已关闭注册');
+    if (!(await isRegistrationAllowed())) return fail(res, 403, 'REGISTER_DISABLED', '管理员已关闭注册');
 
     const body = req.body || {};
     const nickname = validateNickname(body.nickname);
@@ -54,26 +54,30 @@ router.post('/register', async (req, res, next) => {
     if (!password.ok) return fail(res, 400, 'VALIDATION_ERROR', password.message);
 
     const db = getDb();
-    if (db.prepare('SELECT id FROM users WHERE username = ?').get(username.value)) {
+    const existing = await db.prepare('SELECT id FROM users WHERE username = ?').get(username.value);
+    if (existing) {
       return fail(res, 409, 'USERNAME_TAKEN', '该用户名已被注册');
     }
 
     const passwordHash = await bcrypt.hash(password.value, BCRYPT_COST);
-    let info;
+    let userId;
     try {
-      info = db
+      const info = await db
         .prepare(
-          "INSERT INTO users (username, password_hash, nickname, role, status, created_at) VALUES (?, ?, ?, 'user', 'active', ?)"
+          "INSERT INTO users (username, password_hash, nickname, role, status, created_at) VALUES (?, ?, ?, 'user', 'active', ?) RETURNING id"
         )
         .run(username.value, passwordHash, nickname.value, new Date().toISOString());
+      userId = Number(info.rows[0].id);
     } catch (err) {
-      if (err && typeof err.code === 'string' && err.code.startsWith('SQLITE_CONSTRAINT')) {
+      if (err && err.code === '23505') {
         return fail(res, 409, 'USERNAME_TAKEN', '该用户名已被注册');
       }
       throw err;
     }
 
-    const user = db.prepare('SELECT id, username, nickname, role, created_at FROM users WHERE id = ?').get(info.lastInsertRowid);
+    const user = await db
+      .prepare('SELECT id, username, nickname, role, created_at FROM users WHERE id = ?')
+      .get(userId);
     const csrfToken = await startSession(req, user.id);
     return res.status(201).json({ user: toPublicUser(user), csrfToken });
   } catch (err) {
@@ -88,7 +92,7 @@ router.post('/login', async (req, res, next) => {
     const password = typeof body.password === 'string' ? body.password : '';
     if (!username || !password) return fail(res, 400, 'VALIDATION_ERROR', '请输入用户名和密码');
 
-    const user = getDb()
+    const user = await getDb()
       .prepare('SELECT id, username, password_hash, nickname, role, status, created_at FROM users WHERE username = ?')
       .get(username);
 

@@ -9,7 +9,7 @@
 
 - 前端是**手写的原生 HTML/CSS/JS**，没有框架、没有构建工具、没有 CDN 依赖，`public/` 直接可被双击打开（数据接口除外）；
 - 后端是一个 **Express 5 单体应用**，既托管静态页面，也提供 `/api` 接口；
-- 数据落 **SQLite 单文件**（better-sqlite3 同步 API，WAL 模式）；
+- 数据落 **PostgreSQL**（独立数据库服务，`pg` 连接池、全异步 SQL；运行时不再使用 SQLite）；
 - 用户可以是普通用户（聊天）或管理员（管用户、管上游 API Key、管模型、管站点设置）；
 - 上游模型服务通过"OpenAI 兼容"的 `Base URL + API Key` 接入，**Key 只在服务端加密存储、浏览器永不接触**。
 
@@ -41,10 +41,10 @@
 
 ### 2.3 系统级能力
 
-- 会话持久化：`express-session` + 自研 `SqliteSessionStore`（重启不掉登录，过期在读/写时清理 + 定时清理）；
+- 会话持久化：`express-session` + 自研 `PgSessionStore`（会话存 PostgreSQL，重启不掉登录，过期在读/写时清理 + 定时清理）；
 - 加密：`services/encryption.js`，AES-256-GCM，格式 `v1:iv:tag:cipher`；
 - 安全：CSRF 双校验、IP/用户维度限流、上游 SSRF 防护、CSP/HSTS 等安全头；
-- 健壮性：数据库自检的 `/api/health`、EADDRINUSE 明确报错、SIGINT/SIGTERM 优雅退出、1 MB 请求体上限、统一错误信封。
+- 健壮性：异步 ping PostgreSQL 的 `/api/health`、EADDRINUSE 明确报错、SIGINT/SIGTERM 优雅退出、1 MB 请求体上限、统一错误信封。
 
 ## 3. 技术栈
 
@@ -52,9 +52,9 @@
 |---|---|---|---|
 | 运行时 | Node.js | `>=24`（本机 v24.19.0） | 使用内置 fetch、AbortSignal.timeout |
 | Web 框架 | Express | ^5.3.0 | CommonJS；app.js 里手动装配中间件 |
-| 数据库 | better-sqlite3 | ^13.1.1 | 同步 API、WAL、外键开启、busy_timeout=5000 |
+| 数据库 | PostgreSQL + pg | 17 / ^8.23.1 | 独立数据库服务；`pg` 连接池、全异步；better-sqlite3 仅 devDependency 供一次性迁移脚本 |
 | 密码 | bcryptjs | ^3.0.3 | cost=10 |
-| 会话 | express-session | ^1.19.0 | Cookie `chenlong.sid`，7 天，存 SQLite |
+| 会话 | express-session | ^1.19.0 | Cookie `chenlong.sid`，7 天，存 PostgreSQL `sessions` 表 |
 | 配置 | dotenv | ^18.0.10 | 读项目根 `.env` |
 | 加密 | Node `crypto` | 内置 | AES-256-GCM |
 | 前端 | 原生 HTML5/CSS3/ES6+ | — | 无框架、无构建、无 CDN |
@@ -72,6 +72,7 @@
 | 5 | 后台接真实数据 + 系统设置生效 | ✅ 完成 |
 | 6 | 安全加固（限流 / CSRF / SSRF / 安全头 / 会话失效 / 流空闲超时 / 密钥自检） | ✅ **基本完成**（残余：DNS 重绑定窗口、跨进程限流；见 [09](09-status-and-gaps.md)） |
 | 7 | 联调、视觉打磨、文档收尾 | 🟡 进行中（测试套件、知识库、前端一致性修复已落地；CI 与视觉打磨待做） |
+| 8 | 数据库迁移 PostgreSQL（pg 连接池/异步数据层、pg_dump 备份、compose PG、CI PG service） | ✅ 完成（迁移脚本落地与数据演练待核实） |
 
 > 详细偏差清单、运行验证与下一步建议见 [09 现状与差距](09-status-and-gaps.md)。
 
@@ -82,8 +83,8 @@ ChenLong/
 ├─ server/                        后端（CommonJS，全部 .js）
 │  ├─ app.js                      入口：dotenv、密钥解析、中间件装配、路由挂载、错误处理、start()
 │  ├─ database/
-│  │  ├─ db.js                    SQLite 单例（WAL/外键/busy_timeout），导出 getDb/closeDb/resolveDatabaseFile
-│  │  └─ init.js                  建表 7 张 + 索引 + 默认设置（幂等）+ 条件播种管理员
+│  │  ├─ db.js                    PostgreSQL 连接池（pg Pool，全异步），导出 getDb/closeDb/ping/transaction/databaseSizeBytes
+│  │  └─ init.js                  建表 7 张 + 索引 + 默认设置（幂等）+ 条件播种管理员（async）
 │  ├─ middleware/
 │  │  ├─ auth.js                  attachUser（每请求加载用户）+ requireAuth
 │  │  ├─ admin.js                 requireAdmin（role === 'admin'）
@@ -92,7 +93,7 @@ ChenLong/
 │  ├─ services/
 │  │  ├─ encryption.js            AES-256-GCM 加解密（v1:iv:tag:cipher）
 │  │  ├─ dev-secrets.js           开发密钥生成/复用（原子写、损坏即拒绝启动）
-│  │  ├─ session-store.js         SqliteSessionStore（express-session 存储实现）
+│  │  ├─ session-store.js         PgSessionStore（express-session 的 PostgreSQL 存储实现）
 │  │  ├─ validation.js            用户名/密码/昵称校验与公共用户对象
 │  │  ├─ provider-client.js       上游模型发现（URL 归一化、10s 超时、中文错误映射）
 │  │  ├─ upstream-guard.js        上游地址 SSRF 防护（内网/保留段黑名单 + DNS 解析校验）
@@ -111,9 +112,11 @@ ChenLong/
 │  ├─ js/                         app.js（公共库 CL）、auth.js、guard.js、chat.js、api.js、models.js、
 │  │                              admin.js、admin-users.js、admin-data.js、admin-settings.js、admin-dashboard.js
 │  └─ assets/                     mascot/logo.png（原创小图）、icons/、images/ 占位
-├─ data/                          SQLite 数据目录（.gitignore 忽略 db 与 dev-secrets）
-│  ├─ chenlong.db (+ -wal / -shm)
+├─ data/                          备份与开发密钥目录（.gitignore 忽略 backups 与 dev-secrets；PG 数据不在这里）
+│  ├─ backups/                     pg_dump 输出（*.sql；迁移后新备份）
+│  ├─ chenlong.db (+ -wal / -shm)  迁移前的旧 SQLite 文件（历史遗留，仅作迁移源/归档）
 │  └─ .dev-secrets.json           开发密钥（明文，仅开发环境使用）
+├─ pgdata/                        Docker 部署时 PostgreSQL 数据卷（compose 挂载；不进 Git）
 ├─ docs/knowledge-base/           本知识库
 ├─ .env / .env.example            运行配置（.env 被 gitignore）
 ├─ .gitignore
@@ -142,20 +145,23 @@ ChenLong/
 
 ### 7.1 环境要求
 
-- Node.js **>= 24**（better-sqlite3 需匹配 Node ABI；本机 v24.19.0 正常）；
+- Node.js **>= 24**（本机 v24.19.0）；
+- PostgreSQL 17（或兼容版本）：本地用 `docker compose up -d db`，或连接外部实例；需要可达的 `DATABASE_URL`；
+- 备份脚本依赖 `pg_dump`（postgresql-client）；
 - Windows/Linux/macOS 均可（本项目在 Windows 上开发）；
-- 无需安装编译链——node_modules 已就位；若重新 `npm install` 失败，优先检查 Node 版本与构建工具。
+- 运行时依赖都是纯 JS（pg/express），不再需要编译 better-sqlite3 的构建链；node_modules 已就位时可跳过 `npm install`。
 
 ### 7.2 三步启动
 
 ```powershell
 cd D:\ICT\ChenLong
-Copy-Item .env.example .env      # 首次：填 SESSION_SECRET / ENCRYPTION_KEY / ADMIN_PASSWORD
+Copy-Item .env.example .env      # 填 SESSION_SECRET / ENCRYPTION_KEY / ADMIN_PASSWORD / DATABASE_URL 等
+docker compose up -d db          # 本地起 PostgreSQL 17（数据卷 ./pgdata）
 npm install                      # node_modules 已存在时可跳过
 npm start                        # → http://127.0.0.1:3000
 ```
 
-- 首次启动自动建表（7 张）并写入默认设置（6 条，INSERT OR IGNORE 幂等）；
+- 首次启动自动建表（7 张）并写入默认设置（6 条，`INSERT ... ON CONFLICT DO NOTHING` 幂等）；
 - 首次启动会尝试用 `ADMIN_USERNAME / ADMIN_PASSWORD` 播种管理员——**仅当 users 表里没有任何 admin 时执行一次**，之后改 .env 无效；
 - 开发环境缺 `SESSION_SECRET / ENCRYPTION_KEY` 时自动生成到 `data/.dev-secrets.json` 并复用；生产环境缺失则**拒绝启动**；
 - **启动自检**：启动时对 `ENCRYPTION_KEY` 做 encrypt→decrypt 哨兵验证，不可用即 `[FATAL]` 退出；
@@ -177,17 +183,16 @@ npm start                        # → http://127.0.0.1:3000
 | `npm start` | 前台启动服务 |
 | `npm run dev` | `node --watch server/app.js`，改后端自动重启 |
 | `npm run init-db` | 只跑数据库初始化（建表/补设置/播种管理员），打印表清单 |
-| `npm test` / `npm run test:core` | node:test 全量（83 用例）/ 仅单元（65 用例），使用临时库与随机端口 |
-| `npm run backup` | 一致性备份数据库到 `data/backups/`（WAL 安全 + quick_check） |
+| `npm test` / `npm run test:core` | node:test 全量（83 用例）/ 仅单元（65 用例）；**需要可达的 PostgreSQL**（CI 用 service 容器；本地先 `docker compose up -d db`） |
+| `npm run backup` | `pg_dump` 一致性备份到 `data/backups/chenlong-*.sql` |
 | `node --check server/xxx.js` | 语法检查（本项目仍无 lint 脚本） |
 
-## 8. 数据现状（2026-11-15 只读核查）
+## 8. 数据现状
 
-- `users` = 1（1 个 `admin/active`），`sessions` = 1；
-- `api_providers` = 0、`models` = 0、`conversations` = 0、`messages` = 0；
-- `settings` = 6 条，全部为默认值（site_name=尘龙 ChenLong 等），最后更新 2026-11-12。
+- 迁移前 SQLite 快照（历史，2026-11-15）：`users`=1（admin）、`sessions`=1、`settings`=6 条默认值，其余业务表全 0；
+- 迁移到 PostgreSQL 后：数据来自一次性迁移脚本（`npm run migrate:sqlite-to-pg`）；**本机没有 PostgreSQL，本轮未做 PG 实物核查（待核实）**；确认方式：登录后台看仪表盘计数，或连库 `SELECT COUNT(*) FROM users;` 等。
 
-结论：**当前库是一个"刚初始化完"的空壳**，除登录后台外没有可用业务数据。想验证聊天链路必须先按 7.3 配置上游。
+结论：旧库本身是"刚初始化完"的空壳；迁移后若未搬运历史数据，PG 里也应只有迁移脚本写入的内容。想验证聊天链路必须先按 7.3 配置上游。
 
 ## 9. "我想改 X，该去哪"
 
@@ -209,4 +214,4 @@ npm start                        # → http://127.0.0.1:3000
 - 管理员重置密码的规则（8–32 位、必须含字母和数字）与注册密码规则（6–64 位）**不一致**，见 [10 约定与术语](10-conventions-and-glossary.md)；
 - 项目已初始化 git 并推送 GitHub 公开仓库（`TSS-Small-sunshine/ChenLong`，main），并接入 GitHub Actions CI（push/PR 跑 `npm test`）；改动前建议本地提交或先用 `npm run backup` 备份数据库；
 - 聊天的 Base URL 通常要带 `/v1`（聊天路径固定 `{base}/chat/completions`，只有模型发现会回退 `/v1/models`）；
-- 数据库是 WAL 模式，**直接复制 `chenlong.db` 可能漏掉 `-wal` 里的最新数据**，备份要么停服要么用 `VACUUM INTO` / checkpoint。
+- 数据库已切到 PostgreSQL：备份用 `npm run backup`（`pg_dump`，产物 `.sql`）；不要再依赖 `data/chenlong.db` 或直接复制数据库文件；迁移/备份细节见 [03](03-database.md)。

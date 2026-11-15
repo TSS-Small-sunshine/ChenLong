@@ -4,145 +4,150 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { before, after, beforeEach } = require('node:test');
 
-const { installTempDatabase } = require('../helpers/temp-db');
+const { installTestDatabase } = require('../helpers/temp-db');
 
-// 关键：先设置 DB_PATH 指向临时库，再 require 会读取数据库的模块
-const temp = installTempDatabase('chenlong-chat-store-');
-const { initDatabase } = require('../../server/database/init');
-const { getDb, closeDb } = require('../../server/database/db');
-const store = require('../../server/services/chat-store');
-
+// 数据库相关模块必须在 installTestDatabase() 之后再 require
+let temp;
 let db;
-let seq = 0;
+let store;
 
 function unique(prefix) {
-  seq += 1;
-  return prefix + '_' + String(seq).padStart(4, '0') + '_' + Math.random().toString(36).slice(2, 8);
+  return prefix + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 }
 
-function insertUser(username) {
-  const info = db
+async function insertUser(username) {
+  const info = await db
     .prepare(
-      "INSERT INTO users (username, password_hash, nickname, role, status, created_at) VALUES (?, 'x', ?, 'user', 'active', ?)"
+      "INSERT INTO users (username, password_hash, nickname, role, status, created_at) VALUES (?, 'x', ?, 'user', 'active', ?) RETURNING id"
     )
     .run(username, username, new Date().toISOString());
-  return Number(info.lastInsertRowid);
+  return Number(info.rows[0].id);
 }
 
-function insertProvider() {
+async function insertProvider() {
   const now = new Date().toISOString();
-  const info = db
+  const info = await db
     .prepare(
-      "INSERT INTO api_providers (name, base_url, api_key_encrypted, api_type, enabled, created_at, updated_at) VALUES (?, ?, 'v1:aa:bb:cc', 'openai-compatible', 1, ?, ?)"
+      "INSERT INTO api_providers (name, base_url, api_key_encrypted, api_type, enabled, created_at, updated_at) VALUES (?, ?, 'v1:aa:bb:cc', 'openai-compatible', 1, ?, ?) RETURNING id"
     )
     .run(unique('provider'), 'https://upstream.example.com/v1', now, now);
-  return Number(info.lastInsertRowid);
+  return Number(info.rows[0].id);
 }
 
-function insertModel(providerId, modelId, options = {}) {
+async function insertModel(providerId, modelId, options = {}) {
   const { displayName = null, enabled = 1, isDefault = 0 } = options;
   const now = new Date().toISOString();
-  const info = db
+  const info = await db
     .prepare(
-      'INSERT INTO models (provider_id, model_id, display_name, enabled, is_default, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO models (provider_id, model_id, display_name, enabled, is_default, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id'
     )
     .run(providerId, modelId, displayName, enabled, isDefault, 'available', now);
-  return Number(info.lastInsertRowid);
+  return Number(info.rows[0].id);
 }
 
-function insertConversation(userId, title, updatedAt = new Date().toISOString()) {
+async function insertConversation(userId, title, updatedAt = new Date().toISOString()) {
   const now = new Date().toISOString();
-  const info = db
-    .prepare('INSERT INTO conversations (user_id, title, model_id, created_at, updated_at) VALUES (?, ?, NULL, ?, ?)')
+  const info = await db
+    .prepare('INSERT INTO conversations (user_id, title, model_id, created_at, updated_at) VALUES (?, ?, NULL, ?, ?) RETURNING id')
     .run(userId, title, now, updatedAt);
-  return Number(info.lastInsertRowid);
+  return Number(info.rows[0].id);
 }
 
-before(() => {
+before(async () => {
+  temp = await installTestDatabase('chenlong_test_chat_');
+  const initModule = require('../../server/database/init');
+  const dbModule = require('../../server/database/db');
+  db = dbModule.getDb();
+  store = require('../../server/services/chat-store');
+
   const originalWarn = console.warn;
   console.warn = () => {};
   try {
-    initDatabase(); // 临时库建表 + 播种默认设置；无 ADMIN_* 时跳过管理员
+    await initModule.initDatabase(); // 临时库建表 + 播种默认设置（无 ADMIN_* 时跳过管理员）
   } finally {
     console.warn = originalWarn;
   }
-  db = getDb();
 });
 
-beforeEach(() => {
-  db.exec('DELETE FROM messages; DELETE FROM conversations; DELETE FROM models; DELETE FROM api_providers; DELETE FROM users;');
+beforeEach(async () => {
+  await db
+    .prepare('TRUNCATE messages, conversations, models, api_providers, users RESTART IDENTITY CASCADE')
+    .run();
 });
 
-after(() => {
-  closeDb();
-  temp.cleanup();
+after(async () => {
+  if (temp) await temp.cleanup();
 });
 
-test('resolveModel：按内部 id 返回指定模型', () => {
-  const providerId = insertProvider();
-  const modelA = insertModel(providerId, 'model-a', { displayName: '模型 A', enabled: 0 });
-  const modelB = insertModel(providerId, 'model-b', { displayName: '模型 B', isDefault: 1 });
+test('resolveModel：按内部 id 返回指定模型', async () => {
+  const providerId = await insertProvider();
+  const modelA = await insertModel(providerId, 'model-a', { displayName: '模型 A', enabled: 0 });
+  const modelB = await insertModel(providerId, 'model-b', { displayName: '模型 B', isDefault: 1 });
 
-  const result = store.resolveModel(String(modelB));
+  const result = await store.resolveModel(String(modelB));
   assert.equal(result.ok, true);
-  assert.equal(result.model.id, modelB);
+  assert.equal(Number(result.model.id), modelB);
   assert.equal(result.model.model_id, 'model-b');
   assert.equal(result.model.display_name, '模型 B');
   assert.equal(result.model.provider_name.startsWith('provider_'), true);
-  assert.notEqual(result.model.id, modelA);
+  assert.notEqual(Number(result.model.id), modelA);
 });
 
-test('resolveModel：禁用 / 不存在 / 畸形 id 返回 MODEL_NOT_AVAILABLE', () => {
-  const providerId = insertProvider();
-  const disabledId = insertModel(providerId, 'model-disabled', { enabled: 0 });
+test('resolveModel：禁用 / 不存在 / 畸形 id 返回 MODEL_NOT_AVAILABLE', async () => {
+  const providerId = await insertProvider();
+  const disabledId = await insertModel(providerId, 'model-disabled', { enabled: 0 });
 
   for (const raw of [String(disabledId), '999999', 'abc', '-1', '1.5', '12abc']) {
-    const result = store.resolveModel(raw);
+    const result = await store.resolveModel(raw);
     assert.equal(result.ok, false, '应拒绝：' + raw);
     assert.equal(result.code, 'MODEL_NOT_AVAILABLE');
     assert.equal(typeof result.message, 'string');
   }
 });
 
-test('resolveModel：未传 modelId 时取默认启用模型；无可用模型时报 NO_AVAILABLE_MODEL', () => {
-  assert.equal(store.resolveModel().code, 'NO_AVAILABLE_MODEL');
+test('resolveModel：未传 modelId 时取默认启用模型；无可用模型时报 NO_AVAILABLE_MODEL', async () => {
+  assert.equal((await store.resolveModel()).code, 'NO_AVAILABLE_MODEL');
 
-  const providerId = insertProvider();
-  insertModel(providerId, 'plain-model', { enabled: 0 });
-  assert.equal(store.resolveModel(undefined).code, 'NO_AVAILABLE_MODEL');
+  const providerId = await insertProvider();
+  await insertModel(providerId, 'plain-model', { enabled: 0 });
+  assert.equal((await store.resolveModel(undefined)).code, 'NO_AVAILABLE_MODEL');
 
-  insertModel(providerId, 'normal-model', { displayName: '普通', enabled: 1 });
-  const defaultId = insertModel(providerId, 'default-model', { displayName: '默认', isDefault: 1 });
+  await insertModel(providerId, 'normal-model', { displayName: '普通', enabled: 1 });
+  const defaultId = await insertModel(providerId, 'default-model', { displayName: '默认', isDefault: 1 });
 
   for (const raw of [undefined, null, '', '0', 0, '   ']) {
-    const result = store.resolveModel(raw);
+    const result = await store.resolveModel(raw);
     assert.equal(result.ok, true, '空 id 应取默认模型：' + String(raw));
-    assert.equal(result.model.id, defaultId);
+    assert.equal(Number(result.model.id), defaultId);
   }
+
+  const models = await store.listModels();
+  assert.equal(models.length, 2);
+  assert.equal(models[0].isDefault, true, '默认模型应排在前面');
+  assert.equal(models[0].modelId, 'default-model');
 });
 
-test('conversationHistory：system 提示 + 最近 N 条消息，按时间正序', () => {
-  const userId = insertUser(unique('user'));
-  const conversationId = insertConversation(userId, '历史测试');
+test('conversationHistory：system 提示 + 最近 N 条消息，按时间正序', async () => {
+  const userId = await insertUser(unique('user'));
+  const conversationId = await insertConversation(userId, '历史测试');
 
   for (let index = 0; index < 25; index += 1) {
-    store.appendMessage(conversationId, index % 2 === 0 ? 'user' : 'assistant', 'm' + index);
+    await store.appendMessage(conversationId, index % 2 === 0 ? 'user' : 'assistant', 'm' + index);
   }
 
-  const history = store.conversationHistory(conversationId);
+  const history = await store.conversationHistory(conversationId);
   assert.equal(history.length, store.HISTORY_LIMIT + 1);
   assert.deepEqual(history[0], { role: 'system', content: store.SYSTEM_PROMPT });
   assert.equal(history[1].content, 'm5');
   assert.equal(history[history.length - 1].content, 'm24');
-  // 严格正序
   const contents = history.slice(1).map((item) => item.content);
   assert.deepEqual(contents, Array.from({ length: 20 }, (_, index) => 'm' + (index + 5)));
 
-  const limited = store.conversationHistory(conversationId, 3);
+  const limited = await store.conversationHistory(conversationId, 3);
   assert.equal(limited.length, 4);
   assert.deepEqual(limited.slice(1).map((item) => item.content), ['m22', 'm23', 'm24']);
 
-  const empty = store.conversationHistory(insertConversation(userId, '空会话'));
+  const empty = await store.conversationHistory(await insertConversation(userId, '空会话'));
   assert.deepEqual(empty, [{ role: 'system', content: store.SYSTEM_PROMPT }]);
 });
 
@@ -154,7 +159,6 @@ test('autoTitle：去换行、按码位截断 20、空白回退默认标题', ()
   assert.equal(store.autoTitle('a'.repeat(20)), 'a'.repeat(20));
   assert.equal(store.autoTitle('a'.repeat(21)), 'a'.repeat(20));
   assert.equal(store.autoTitle('汉'.repeat(21)), '汉'.repeat(20));
-  // 按 Unicode 码位截断，emoji 不会被截成半个代理对
   const emojiTitle = store.autoTitle('😀'.repeat(25));
   assert.equal(Array.from(emojiTitle).length, 20);
 
@@ -163,42 +167,65 @@ test('autoTitle：去换行、按码位截断 20、空白回退默认标题', ()
   }
 });
 
-test('listConversations：只返回本人、关键词 LIKE 转义 % 与 _、按 updated_at 倒序', () => {
-  const alice = insertUser(unique('alice'));
-  const bob = insertUser(unique('bob'));
+test('listConversations：只返回本人、关键词 LIKE 转义 % 与 _、按 updated_at 倒序', async () => {
+  const alice = await insertUser(unique('alice'));
+  const bob = await insertUser(unique('bob'));
 
-  const older = insertConversation(alice, 'hello world', '2026-01-01T00:00:00.000Z');
-  const percent = insertConversation(alice, '100% pure', '2026-01-02T00:00:00.000Z');
-  const underscore = insertConversation(alice, 'a_b title', '2026-01-03T00:00:00.000Z');
-  insertConversation(alice, '100X pure', '2026-01-04T00:00:00.000Z');
-  insertConversation(alice, 'axb title', '2026-01-05T00:00:00.000Z');
-  const bobConversation = insertConversation(bob, 'hello world', '2026-01-06T00:00:00.000Z');
+  const older = await insertConversation(alice, 'hello world', '2026-01-01T00:00:00.000Z');
+  const percent = await insertConversation(alice, '100% pure', '2026-01-02T00:00:00.000Z');
+  const underscore = await insertConversation(alice, 'a_b title', '2026-01-03T00:00:00.000Z');
+  await insertConversation(alice, '100X pure', '2026-01-04T00:00:00.000Z');
+  await insertConversation(alice, 'axb title', '2026-01-05T00:00:00.000Z');
+  const bobConversation = await insertConversation(bob, 'hello world', '2026-01-06T00:00:00.000Z');
 
-  const all = store.listConversations(alice);
+  const all = await store.listConversations(alice);
   assert.equal(all.length, 5);
-  assert.equal(all.some((item) => item.id === bobConversation), false);
-  // updated_at 倒序
+  assert.equal(all.some((item) => Number(item.id) === bobConversation), false);
   assert.deepEqual(
     all.map((item) => item.title),
     ['axb title', '100X pure', 'a_b title', '100% pure', 'hello world']
   );
+  assert.equal(Number(all[0].messageCount), 0);
 
-  const byPercent = store.listConversations(alice, '%');
-  assert.deepEqual(byPercent.map((item) => item.id), [percent]);
+  const byPercent = await store.listConversations(alice, '%');
+  assert.deepEqual(byPercent.map((item) => Number(item.id)), [percent]);
 
-  const byUnderscore = store.listConversations(alice, '_');
-  assert.deepEqual(byUnderscore.map((item) => item.id), [underscore]);
+  const byUnderscore = await store.listConversations(alice, '_');
+  assert.deepEqual(byUnderscore.map((item) => Number(item.id)), [underscore]);
 
-  // 关键词前后空白被 trim
-  const hello = store.listConversations(alice, '  hello  ');
-  assert.deepEqual(hello.map((item) => item.id), [older]);
-  // SQLite LIKE 对 ASCII 大小写不敏感，这是既有行为
-  assert.deepEqual(store.listConversations(alice, 'HELLO').map((item) => item.id), [older]);
+  const hello = await store.listConversations(alice, '  hello  ');
+  assert.deepEqual(hello.map((item) => Number(item.id)), [older]);
+  // PostgreSQL LIKE 大小写敏感（与 SQLite 不同）
+  assert.equal((await store.listConversations(alice, 'HELLO')).length, 0);
 
-  const emptyKeyword = store.listConversations(alice, '   ');
+  const emptyKeyword = await store.listConversations(alice, '   ');
   assert.equal(emptyKeyword.length, 5);
-  // 非字符串关键词按无关键词处理
-  assert.equal(store.listConversations(alice, null).length, 5);
+  assert.equal((await store.listConversations(alice, null)).length, 5);
+});
+
+test('会话 CRUD：create / listMessages / rename / delete 均为异步', async () => {
+  const userId = await insertUser(unique('crud'));
+
+  const created = await store.createConversation(userId, { title: 'CRUD 会话' });
+  assert.equal(created.title, 'CRUD 会话');
+  assert.equal(Number(created.messageCount), 0);
+
+  const appended = await store.appendMessage(created.id, 'user', '你好');
+  assert.ok(Number.isInteger(appended.id) && appended.id > 0);
+  assert.equal(typeof appended.createdAt, 'string');
+
+  const messages = await store.listMessages(created.id);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].role, 'user');
+  assert.equal(messages[0].content, '你好');
+
+  const renamed = await store.renameConversation(userId, created.id, '改名后');
+  assert.equal(renamed.title, '改名后');
+  const found = await store.findConversation(userId, created.id);
+  assert.equal(Number(found.id), Number(created.id));
+
+  assert.equal(await store.deleteConversation(userId, created.id), true);
+  assert.equal(await store.findConversation(userId, created.id), null);
 });
 
 test('parseId / isEmptyId / modelName 边界', () => {

@@ -2,8 +2,8 @@
 
 [![CI](https://github.com/TSS-Small-sunshine/ChenLong/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/TSS-Small-sunshine/ChenLong/actions/workflows/ci.yml) [![CodeQL](https://github.com/TSS-Small-sunshine/ChenLong/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/TSS-Small-sunshine/ChenLong/actions/workflows/codeql.yml)
 
-> 一个 AI 助手网站：原生 HTML/CSS/JS 前端 + Node.js/Express 后端 + SQLite 存储。
-> 当前进度：**阶段 6 基本完成**（阶段 1–5 全部完成；限流 / CSRF / SSRF / 安全响应头 / 会话失效 / 流式空闲超时已落地）。
+> 一个 AI 助手网站：原生 HTML/CSS/JS 前端 + Node.js/Express 后端 + PostgreSQL 存储。
+> 当前进度：**阶段 6 基本完成**（阶段 1–5 全部完成；限流 / CSRF / SSRF / 安全响应头 / 会话失效 / 流式空闲超时已落地）；**数据库已迁移到 PostgreSQL（第三批）**。
 > 工程知识库见 [docs/knowledge-base/](docs/knowledge-base/README.md)：架构、数据库、API、前端、安全、运维与现状差距。
 > GitHub 仓库：<https://github.com/TSS-Small-sunshine/ChenLong>（public，`main` 分支；首次提交 2026-11-15）。main 已受分支保护，贡献方式见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
@@ -15,9 +15,9 @@
 |---|---|---|---|
 | 前端 | 原生 HTML5 / CSS3 / ES6+ | — | 无框架、无构建工具、无 CDN，双击即可打开 |
 | 后端 | Node.js + Express | 24 / 5.3.0 | CommonJS |
-| 数据库 | SQLite（better-sqlite3） | 13.1.1 | 同步 API，WAL 模式 |
+| 数据库 | PostgreSQL（pg） | 17 / ^8.23.1 | 独立数据库服务；`pg` 连接池、全异步（better-sqlite3 仅 devDependency 供一次性迁移脚本） |
 | 密码 | bcryptjs | 3.0.3 | 10 轮 |
-| 会话 | express-session | 1.19.0 | httpOnly Cookie，7 天，**会话存 SQLite（重启不掉登录）** |
+| 会话 | express-session | 1.19.0 | httpOnly Cookie，7 天，**会话存 PostgreSQL（重启不掉登录）** |
 | 加密 | Node crypto（AES-256-GCM） | 内置 | 格式 `v1:iv:tag:cipher` |
 | 配置 | dotenv | 18.0.10 | 读项目根目录 `.env` |
 
@@ -27,33 +27,35 @@
 
 ```bash
 cd D:\ICT\ChenLong
-cp .env.example .env        # 建议填 SESSION_SECRET / ENCRYPTION_KEY / ADMIN_PASSWORD
+cp .env.example .env        # 填 SESSION_SECRET / ENCRYPTION_KEY / ADMIN_PASSWORD / DATABASE_URL / POSTGRES_PASSWORD 等
+docker compose up -d db     # 本地起 PostgreSQL 17（数据卷 ./pgdata）；已有外部 PG 可跳过
 npm install
-npm start                   # → http://localhost:3000
+npm start                   # → http://localhost:3000（启动时 await 初始化 PG 表结构）
 npm run dev                 # 开发模式（node --watch，改后端自动重启）
-npm run init-db             # 只初始化数据库（幂等）
-npm test                    # 运行 node:test 测试套件（83 个用例）
-npm run backup              # 一致性备份数据库 → data/backups/
+npm run init-db             # 只初始化数据库（幂等：建表/补设置/播种管理员）
+npm test                    # 运行 node:test 测试套件（需要可达的 PostgreSQL）
+npm run backup              # pg_dump 一致性备份 → data/backups/chenlong-*.sql
 ```
 
-* 首次启动自动建表（7 张）并写入默认系统设置（6 条，幂等）。
+* 首次启动自动建表（7 张）并写入默认系统设置（6 条，`INSERT ... ON CONFLICT DO NOTHING` 幂等）；**PostgreSQL 数据库需先存在**（compose 的 `POSTGRES_DB` 或 `createdb`）。
 * 只有当 `users` 表里**没有任何 admin** 时，才会用 `.env` 里的 `ADMIN_USERNAME/ADMIN_PASSWORD` 创建一次管理员；日志不打印密码。已有管理员后再改这两个变量不会改库。
 * 开发环境缺 `SESSION_SECRET` / `ENCRYPTION_KEY` 时：生成一次并存进 `data/.dev-secrets.json`，之后**复用它**（所以重启不会掉登录、也不会让已加密的 API Key 解不开）。该文件已被 `.gitignore` 忽略，但**是明文的**。
-* 生产环境（`NODE_ENV=production`）缺密钥或 `.dev-secrets.json` 损坏 → 直接退出，绝不覆盖。
+* 生产环境（`NODE_ENV=production`）缺 `SESSION_SECRET/ENCRYPTION_KEY` 直接拒绝启动（生产不读取 `data/.dev-secrets.json`，也不会自动生成密钥）。
 * **启动自检**：启动时对 `ENCRYPTION_KEY` 做一次「加密→解密」哨兵自检，密钥不可用直接 `[FATAL]` 退出，避免「服务能启动、首次保存 API Key 才 500」。
 * **会话失效**：管理员重置他人密码会立即踢掉目标用户全部已登录会话；用户自助改密会踢掉其它设备会话、保留当前会话。
+* **从 SQLite 升级**：`npm run migrate:sqlite-to-pg` 一次性搬运旧数据（细节见 [知识库 03](docs/knowledge-base/03-database.md) 与 [08](docs/knowledge-base/08-config-and-ops.md)）。
 
 ### Docker 运行（推荐用于部署）
 
-`@`@`bash
-cp .env.example .env      # 填生产密钥：SESSION_SECRET / ENCRYPTION_KEY / ADMIN_*
-mkdir -p data && sudo chown -R 1000:1000 data   # Linux：让容器内 node 用户可写
+```bash
+cp .env.example .env      # 填生产密钥：SESSION_SECRET / ENCRYPTION_KEY / ADMIN_* / POSTGRES_PASSWORD
 docker compose up -d --build
 curl -s http://127.0.0.1:3000/api/health
-`@`@`
+```
 
-- 镜像多阶段构建、**非 root 运行**、内置 healthcheck，数据通过 `./data` 卷持久化；容器默认只绑 `127.0.0.1:3000`，公网访问请前置反代 + HTTPS；
-- **只支持单副本**（SQLite 单写 + 限流为进程内存态），不要 scale 多容器；
+- compose 现在是 **app + db 两个服务**：`db` 为 `postgres:17`（数据卷 `./pgdata`、`pg_isready` healthcheck），`app` 通过 `depends_on` 等 db 健康后启动并用 `DATABASE_URL` 连 `db:5432`；镜像多阶段构建、**非 root 运行**、内置 healthcheck；
+- 备份数据在 `./data/backups`（`pg_dump` 的 `.sql`），数据库文件在 `./pgdata`（不要随手删）；容器默认只绑 `127.0.0.1:3000`，公网访问请前置反代 + HTTPS；
+- **仍建议单副本**：限流是进程内存态（PostgreSQL 本身支持并发写，已不再是 SQLite 单写者约束），多实例前先把限流换共享存储；
 - 完整指南（反代配置、备份恢复、升级、排错）见 [docs/DEPLOY-DOCKER.md](docs/DEPLOY-DOCKER.md)。
 
 生成密钥：
@@ -71,11 +73,11 @@ ChenLong/
 ├─ server/                     后端（CommonJS）
 │  ├─ app.js                   入口：密钥解析与自检、会话、中间件装配、路由挂载、静态目录、/api/health、错误处理
 │  ├─ database/
-│  │  ├─ db.js                 打开 SQLite（WAL + 外键 + busy_timeout）、导出单例
-│  │  └─ init.js               建表（7 张）+ 索引 + 默认设置 + 播种管理员（幂等）
+│  │  ├─ db.js                 PostgreSQL 连接池（pg Pool，全异步），导出 getDb/closeDb/ping/transaction/databaseSizeBytes
+│  │  └─ init.js               建表（7 张，IDENTITY 主键）+ 索引 + 默认设置 + 播种管理员（幂等，async）
 │  ├─ services/
 │  │  ├─ encryption.js         AES-256-GCM 加解密 API Key + 启动哨兵自检
-│  │  ├─ session-store.js      SqliteSessionStore（含按用户失效会话）
+│  │  ├─ session-store.js      PgSessionStore（PostgreSQL 会话存储，含按用户失效会话）
 │  │  ├─ dev-secrets.js        开发密钥生成/复用（原子写入，损坏即报错退出）
 │  │  ├─ validation.js         用户名/密码/昵称校验与错误文案
 │  │  ├─ provider-client.js    上游模型发现：URL 归一化、10 秒超时、重定向拒绝、中文错误映射
@@ -102,12 +104,13 @@ ChenLong/
 │  │                           admin-settings.js、admin-dashboard.js
 │  └─ assets/                  mascot/logo.png（原创小图）、icons/、images/
 ├─ test/                       node:test 测试套件（core 单元 + features 特性/集成）
-├─ scripts/backup-db.js        一致性数据库备份脚本（WAL 安全，npm run backup）
+├─ scripts/backup-db.js        pg_dump 一致性备份脚本（输出 data/backups/*.sql，npm run backup；需要 postgresql-client）
 ├─ docs/knowledge-base/        工程知识库（架构/数据库/API/前端/安全/运维/现状差距）
-├─ data/
-│  ├─ chenlong.db              SQLite 数据文件（.gitignore 忽略；伴随 -wal/-shm）
-│  ├─ backups/                 数据库备份输出目录（.gitignore 忽略）
+├─ data/                       备份与开发密钥目录（PG 数据不在这里）
+│  ├─ backups/                 数据库备份输出目录（pg_dump 的 *.sql；.gitignore 忽略）
+│  ├─ chenlong.db              （历史遗留）迁移前 SQLite 文件，仅作迁移源/归档
 │  └─ .dev-secrets.json        开发密钥（.gitignore 忽略，明文，勿提交）
+├─ pgdata/                     Docker 部署时 PostgreSQL 数据卷（compose 挂载；不进 Git）
 ├─ .env.example                环境变量样例
 ├─ package.json
 └─ README.md
@@ -194,18 +197,15 @@ ChenLong/
 
 ## 数据库
 
-`users` · `api_providers` · `models` · `conversations` · `messages` · `settings` · `sessions`（另有若干索引）
+`users` · `api_providers` · `models` · `conversations` · `messages` · `settings` · `sessions`（另有 5 个索引）——**PostgreSQL**，连接用 `DATABASE_URL`（或 PG* 变量），连接池 `PG_POOL_MAX` 默认 10。
 
-* 外键约束已开启（`PRAGMA foreign_keys = ON`），WAL 模式。
-* 时间字段统一存 ISO 字符串。
-* 密码列 `password_hash` 为 bcrypt，形如 `$2b$10$…`（60 字符），任何接口都不返回。
-* `settings` 表为 `setting_key / setting_value / updated_at`，布尔值存 `'1'`/`'0'`。
-* `sessions` 表由 `SqliteSessionStore` 维护：过期会话在读写时清理，另有每 15 分钟定时清理；支持按用户批量失效（改密/管理员重置密码）。
-* 一致性备份用 `npm run backup`（`scripts/backup-db.js`）：基于 SQLite Online Backup API，WAL 中未 checkpoint 的数据也会进入备份，并做 `quick_check` 校验。
+* 主键为 `INTEGER GENERATED ALWAYS AS IDENTITY`；时间字段统一存 ISO 字符串（`TEXT`）；布尔存 `0/1`；SQL 写 `?` 由数据层自动转 `$1..$n`。
+* 密码列 `password_hash` 为 bcrypt（`$2b$10$…` 60 字符），任何接口都不返回。
+* `settings` 表为 `setting_key / setting_value / updated_at`，默认 6 个键；写入用 `INSERT ... ON CONFLICT`。
+* `sessions` 表由 `PgSessionStore` 维护：过期会话在读写时清理，另有每 15 分钟定时清理；支持按用户批量失效（改密/管理员重置密码）。
+* 备份用 `npm run backup`（`scripts/backup-db.js`）：调用 `pg_dump --format=plain`，产物是 `data/backups/chenlong-*.sql`；恢复用 `psql "$DATABASE_URL" -f <备份>.sql`；**备份是明文 SQL，且 `ENCRYPTION_KEY` 必须与备份分开离线保管**。
 * `conversations` 按 `user_id` 归属，`messages` 通过 `conversation_id` 级联删除（删会话即删消息）。
-
----
-
+* 旧 SQLite 数据用 `npm run migrate:sqlite-to-pg` 一次性迁移（脚本/参数见 [知识库 03](docs/knowledge-base/03-database.md) §9；待核实）；仍无 migration 框架，改表需手工 `ALTER/重建` 并先备份。
 ## 安全约定
 
 1. **API Key 只加密存库**（AES-256-GCM），任何接口都不返回明文，日志不打印。
@@ -230,19 +230,18 @@ ChenLong/
 ## 测试与备份
 
 ```bash
-npm test            # 全部测试（node:test，83 个用例，约 5s）
+npm test            # 全部测试（node:test，83 个用例）；需要可达的 PostgreSQL
 npm run test:core   # 只跑单元测试（65 个用例）
-npm run backup      # 备份到 data/backups/chenlong-YYYYMMDD-HHmmss.db（WAL 安全 + quick_check 校验）
-node scripts/backup-db.js --help   # 查看备份脚本参数（--out / --db / --force）
+npm run backup      # pg_dump 备份到 data/backups/chenlong-YYYYMMDD-HHmmss.sql
+node scripts/backup-db.js --help   # 查看备份脚本参数（--out / --database-url / --force）
 ```
 
-* 测试全部使用 `os.tmpdir()` 下的临时数据库与随机端口，**不会写入** `data/chenlong.db`；覆盖 CSRF、限流、加密、SSRF、会话存储、聊天模型解析、SSE 解析、改密会话失效与应用层 HTTP 集成。
-* **CI / 安全检查**：`.github/workflows/ci.yml`（Node 24 + `npm test` + `Docker image` 镜像构建与容器冒烟）、`codeql.yml`（CodeQL）、`dependency-review.yml`（依赖变更审查）、`pr-guard.yml`（PR 机器人）；在 push / PR 时自动运行，规则见 [CONTRIBUTING.md](CONTRIBUTING.md)。
-* 备份脚本使用 SQLite Online Backup API，自动包含 WAL 中尚未 checkpoint 的数据；恢复时停服后用备份替换 `data/chenlong.db`（同时删除旧的 `-wal`/`-shm`），并确保 `ENCRYPTION_KEY` 与备份时一致。
-* 备份目录 `data/backups/` 已被 `.gitignore` 忽略；**`ENCRYPTION_KEY` 必须与备份分开离线保管**，否则已加密的 API Key 永久无法解密。
-
----
-
+* 测试需要 **PostgreSQL**：CI 的 test job 用 `postgres:17` service 容器提供；本地先 `docker compose up -d db` 并在 `.env` 配 `DATABASE_URL`，测试必须使用独立测试库/schema，**不得连生产库**。本机没有 PG 时 `npm test` 不可用（由 CI 验证）。
+* 测试覆盖 CSRF、限流、加密、SSRF、会话存储、聊天模型解析、SSE 解析、改密会话失效与应用层 HTTP 集成。
+* **CI / 安全检查**：`.github/workflows/ci.yml`（Node 24 + PostgreSQL service + `npm test`；`Docker image` job 用 compose 起 db+app 冒烟）、`codeql.yml`（CodeQL）、`dependency-review.yml`（依赖变更审查）、`pr-guard.yml`（PR 机器人）；在 push / PR 时自动运行，规则见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+* 备份脚本使用 `pg_dump`（需要宿主机有 `postgresql-client`，或在含 pg_dump 的容器内执行）；产物是**明文 SQL**，含聊天记录与密文 API Key，需离线/加密保管，禁止提交 Git（`data/backups/` 已 gitignore）。
+* 恢复：停服后用 `psql "$DATABASE_URL" -f <备份>.sql` 导入空库；**`ENCRYPTION_KEY` 必须与备份时一致**，否则已加密的 API Key 永久无法解密。
+* 一次性数据迁移：`npm run migrate:sqlite-to-pg`（旧 SQLite → PostgreSQL；迁移前先备份旧库与密钥；细节见 [知识库 03](docs/knowledge-base/03-database.md) §9）。
 ## 贡献与 PR 流程
 
 - **main 受分支保护**：所有改动（包括维护者）必须通过 Pull Request 合并，只允许 Squash merge，禁止 force push；合并后自动删除分支。
@@ -268,7 +267,7 @@ node scripts/backup-db.js --help   # 查看备份脚本参数（--out / --db / -
 * 站点名含空格时会被拆成「主标题 + 既有副标题」两截渲染（`paintSiteName` 按第一个空格切分），后台改站点名时建议不要带空格。
 * **会话失效**：管理员重置他人密码会立即踢下线；禁用账号在下一次请求生效，在途 SSE 不会被立即断开。
 * 最后一个启用管理员保护在 HTTP 层不可达（改自己会先被 `CANNOT_MODIFY_SELF` 拦住），只在数据库层脚本中成立。
-* 仪表盘的 `dbSizeBytes` 只统计主库文件，不含 `-wal`/`-shm`。
+* 仪表盘的 `dbSizeBytes` 现为 PostgreSQL `pg_database_size()`（含索引/TOAST，随死元组波动），不等于业务数据量；需要精确业务量请逐表统计。
 * 后台「聊天数据」的关键词只匹配会话标题与用户昵称/用户名，不搜消息正文；管理员不可删除会话。
 * 后台公告条由各页脚本 `hoistAnnouncement` 搬移（6 页已统一），属绕开公共 `app.js` 的补丁。
 * 登录页「记住我」只有 UI；「忘记密码」仍是占位（管理员可在用户管理页重置密码）。
@@ -276,7 +275,8 @@ node scripts/backup-db.js --help   # 查看备份脚本参数（--out / --db / -
 * 吉祥物完整立绘仍为 CSS 占位；页头 logo 使用原创小图（256×256）。
 * **密码策略两套**：注册/自助改密 6–64 位无复杂度；管理员重置 8–32 位且必须含字母+数字（前端弹窗与后端一致）。
 * **限流是进程内存态**：多实例部署时额度按实例放大，重启清零；当前仅适合单进程部署。
-* **工程化**：已有 GitHub 公开仓库 [`TSS-Small-sunshine/ChenLong`](https://github.com/TSS-Small-sunshine/ChenLong)，main 受分支保护（所有改动走 PR，必需检查 / 机器人审查见 [CONTRIBUTING.md](CONTRIBUTING.md)），接入 CI / CodeQL / 依赖审查 / Dependabot / PR 审查机器人；仍无数据库 migration 框架；用户中心「历史对话」仍为静态空态；`public/js/admin.js` 是阶段 1 死代码（6 个后台页仍加载）。
+* **工程化**：已有 GitHub 公开仓库 [`TSS-Small-sunshine/ChenLong`](https://github.com/TSS-Small-sunshine/ChenLong)，main 受分支保护（所有改动走 PR，必需检查 / 机器人审查见 [CONTRIBUTING.md](CONTRIBUTING.md)），接入 CI / CodeQL / 依赖审查 / Dependabot / PR 审查机器人；仍无数据库 migration 框架；`npm test` 依赖 PostgreSQL（CI service / 本地 compose db）；用户中心「历史对话」仍为静态空态；`public/js/admin.js` 是阶段 1 死代码（6 个后台页仍加载）。
+* **PostgreSQL 迁移**：运行时已从 SQLite 切到 PostgreSQL；旧 `data/chenlong.db` 仅作迁移源归档，备份改为 `pg_dump`（`.sql`）；多实例部署前需先把进程内存态限流换成共享存储。
 
 ---
 
@@ -291,3 +291,4 @@ node scripts/backup-db.js --help   # 查看备份脚本参数（--out / --db / -
 | 5 | 后台数据页（用户/聊天/设置/仪表盘）接真实数据 + 系统设置生效 | ✅ 完成 |
 | 6 | 安全加固（限流 / CSRF / SSRF / 安全响应头 / 会话失效 / 流空闲超时） | ✅ 基本完成（残余：DNS 重绑定窗口、跨进程限流；见知识库 09） |
 | 7 | 联调、视觉打磨、文档收尾 | 🟡 进行中（测试套件、知识库、前端一致性修复、CI / CodeQL / PR 机器人已落地；视觉打磨与 lint 待做） |
+| 8 | 数据库迁移 PostgreSQL（异步数据层、pg_dump 备份、compose PG、CI PG service） | ✅ 完成（迁移脚本落地与数据演练待核实） |

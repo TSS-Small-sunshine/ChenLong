@@ -6,6 +6,7 @@
 ## 1. 威胁模型与边界
 
 - 部署形态：单体、同源、私有部署，管理员是最高权限（可配置上游、看全站聊天、管用户）；
+- 部署新增依赖：PostgreSQL 服务（连接串/备份/数据目录都属敏感资产）；
 - 主要威胁：未授权访问、越权（普通用户拿管理员能力/看他人会话）、CSRF、撞库与暴力破解、XSS（前端渲染用户内容）、API Key 泄露、SSRF（管理员被诱导配置内网地址）、会话劫持；
 - **不在防护范围**：DDoS、供应链攻击、物理安全、主机失陷、恶意管理员（管理员权限本身就是完全信任）、多租户隔离。
 
@@ -16,15 +17,15 @@
 | 密码哈希 | bcrypt cost=10 | auth.js:16、profile.js、users.js |
 | 会话固定防护 | 登录/注册成功先 `session.regenerate()` 再写 userId | auth.js:30–40 |
 | 账号枚举防护 | 用户不存在时也跑一次 bcrypt 比对（`burnPasswordCompare`）抹平时间差；错误文案统一"用户名或密码错误" | auth.js:20–24, 96–101 |
-| Cookie 属性 | `httpOnly`、`sameSite=lax`、7 天；生产环境自动 `secure` | app.js:129–134 |
-| 会话存储 | SQLite（`sessions` 表），重启不掉线 | services/session-store.js |
+| Cookie 属性 | `httpOnly`、`sameSite=lax`、7 天；生产环境自动 `secure` | app.js:137–151 |
+| 会话存储 | PostgreSQL（`sessions` 表，`PgSessionStore`），重启不掉线；跨进程共享 | services/session-store.js |
 | 每请求校验 | `attachUser` 每次按 session.userId 查库；用户被禁用/删除 → 销毁 session，按匿名继续 | middleware/auth.js:8–26 |
 | 登出 | 销毁会话 + 清 Cookie | auth.js:111–119 |
 
 **弱点与边界**：
 
-- 没有绝对会话超时（只有 7 天滑动过期）、没有"登出全部设备"、没有会话列表管理；
-- **管理员重置密码不会踢掉目标用户已登录会话**（他还能用旧会话直到过期）；
+- 没有绝对会话超时（只有 7 天滑动过期）、没有会话列表管理（管理员重置密码/本人改密会按用户失效会话，但「登出全部设备」没有独立入口）；
+- **会话失效已实现**：管理员重置他人密码 → 目标用户全部会话失效；本人改密 → 其它设备失效、当前会话保留（第二批改进，见 [09](09-status-and-gaps.md) §7）；
 - 管理员禁用账号是**下一次请求才生效**（attachUser 销毁会话），不会立刻断开在途 SSE；
 - 没有登录失败次数锁定（只有 IP 限流 10 次/5 分钟），分布式/慢速撞库仍可能；
 - 没有 MFA、没有邮箱验证、没有找回密码流程。
@@ -85,7 +86,7 @@
 
 - **启动自检（已实现）**：`ensureSecrets` 之后执行 `encryption.verifyKey()` 哨兵自检（encrypt→decrypt 固定值）；密钥格式错误/不可用时 `[FATAL]` 并 exit(1)，不会再出现"服务正常启动、首次保存 Key 才 500"；
 
-**最关键的运维事实**：**`ENCRYPTION_KEY` 丢失 = 所有已存 API Key 永久不可解密**（没有 key 轮换/恢复机制）。备份数据库时必须一并备份密钥。
+**最关键的运维事实**：**`ENCRYPTION_KEY` 丢失 = 所有已存 API Key 永久不可解密**（没有 key 轮换/恢复机制）。PostgreSQL 备份用 `npm run backup`（`pg_dump`，产物是**明文 SQL**，含聊天记录与密文 Key）；**备份文件与密钥都必须按敏感数据离线保管**，且不能互相放在同一处公开存储。
 
 ## 7. SSRF 防护（上游地址）
 
@@ -139,7 +140,7 @@
 | 响应泄露 | 400/401/403/404 只回文案；500 生产不回堆栈；密码哈希/加密 Key 永不出现在响应 |
 | 404 防枚举 | 他人会话、不存在的 id 统一 404（后台则区分"会话不存在"与"用户不存在"，管理员可见） |
 
-> 明文内容（聊天消息、站点设置）直接落 SQLite，**没有字段级加密**；数据库文件被拿走 = 聊天内容全部泄露（但 Key 仍安全）。
+> 明文内容（聊天消息、站点设置）直接落 PostgreSQL（TEXT 列），**没有字段级加密**；数据库/备份被拿走或连接未启用 TLS = 聊天内容可能泄露（但 `api_key_encrypted` 仍是密文，取决于 `ENCRYPTION_KEY` 是否同时泄露）。
 
 ## 10. 日志与可观测性
 
@@ -155,9 +156,9 @@
 - [ ] `SESSION_SECRET` 与 `ENCRYPTION_KEY` 用真正随机值写入环境变量（不是 .dev-secrets.json）
 - [ ] 前置 HTTPS（Nginx/Caddy/ALB），并设置 `TRUST_PROXY=1` 让 `req.secure` 与 `req.ip` 正确（否则 HSTS 不生效、限流按代理 IP 计数）
 - [ ] `ADMIN_PASSWORD` 首次启动后立即修改；不要保留默认弱口令
-- [ ] 数据库文件与备份目录仅运行用户可读；`.env` 权限收紧
-- [ ] 备份数据库**同时**备份 `ENCRYPTION_KEY`，并验证恢复流程
+- [ ] PostgreSQL 数据目录与备份文件仅运行用户可读；PG 不对公网暴露、连接建议 TLS（`sslmode=require`）；`.env` 权限收紧
+- [ ] 备份数据库（`npm run backup` → `data/backups/*.sql`）**同时**备份 `ENCRYPTION_KEY`，并验证 `psql -f` 恢复流程
 - [ ] 进程守护（systemd/PM2/NSSM）+ 崩溃自动重启；监听 127.0.0.1 由反代对外
 - [ ] 反向代理设置合理的 idle/read timeout（大于最长流式生成时间），并关闭对 SSE 的缓冲（`proxy_buffering off`；应用已发 `X-Accel-Buffering: no`）
 - [ ] 监控 `/api/health`；日志集中收集
-- [ ] 定期升级依赖（当前锁定 express 5.x / better-sqlite3 13.x，无自动更新流程）
+- [ ] 定期升级依赖（当前 express 5.x / pg 8.x，无自动更新流程）
