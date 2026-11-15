@@ -33,12 +33,13 @@ function wantsStream(raw) {
   return raw === true || raw === 'true' || raw === 1;
 }
 
-function resolveConversation(userId, rawConversationId, message, modelId) {
+async function resolveConversation(userId, rawConversationId, message, modelId) {
   if (store.isEmptyId(rawConversationId)) {
-    return { ok: true, id: store.createConversation(userId, { title: store.autoTitle(message), modelId }).id };
+    const created = await store.createConversation(userId, { title: store.autoTitle(message), modelId });
+    return { ok: true, id: created.id };
   }
   const id = store.parseId(rawConversationId);
-  const existing = id ? store.findConversation(userId, id) : null;
+  const existing = id ? await store.findConversation(userId, id) : null;
   if (!existing) return { ok: false };
   return { ok: true, id: existing.id };
 }
@@ -101,8 +102,8 @@ async function complete({ res, model, modelName, conversationId, userMessage, hi
 
   if (result.aborted) {
     if (result.content) {
-      const saved = store.appendMessage(conversationId, store.ROLE_ASSISTANT, result.content);
-      store.touchConversation(conversationId, model.id);
+      const saved = await store.appendMessage(conversationId, store.ROLE_ASSISTANT, result.content);
+      await store.touchConversation(conversationId, model.id);
       console.warn(
         `[chat] 客户端断开，已保存部分回复：conversation=${conversationId} message=${saved.id} 字数=${result.content.length}`
       );
@@ -112,8 +113,8 @@ async function complete({ res, model, modelName, conversationId, userMessage, hi
 
   if (!result.ok) return failUpstream(result.code || 'UPSTREAM_ERROR', result.message);
 
-  const assistant = store.appendMessage(conversationId, store.ROLE_ASSISTANT, result.content);
-  store.touchConversation(conversationId, model.id);
+  const assistant = await store.appendMessage(conversationId, store.ROLE_ASSISTANT, result.content);
+  await store.touchConversation(conversationId, model.id);
 
   if (sse) {
     writeEvent({ type: 'done', conversationId, assistantMessageId: assistant.id, content: result.content });
@@ -127,23 +128,23 @@ async function complete({ res, model, modelName, conversationId, userMessage, hi
   });
 }
 
-router.get('/models', (req, res, next) => {
+router.get('/models', async (req, res, next) => {
   try {
-    return res.json({ items: store.listModels() });
+    return res.json({ items: await store.listModels() });
   } catch (err) {
     return next(err);
   }
 });
 
-router.get('/conversations', (req, res, next) => {
+router.get('/conversations', async (req, res, next) => {
   try {
-    return res.json({ items: store.listConversations(req.user.id, req.query.keyword) });
+    return res.json({ items: await store.listConversations(req.user.id, req.query.keyword) });
   } catch (err) {
     return next(err);
   }
 });
 
-router.post('/conversations', (req, res, next) => {
+router.post('/conversations', async (req, res, next) => {
   try {
     const body = req.body || {};
     let title = store.TITLE_DEFAULT;
@@ -152,39 +153,39 @@ router.post('/conversations', (req, res, next) => {
       if (!read.ok) return fail(res, 400, 'VALIDATION_ERROR', read.message);
       title = read.value;
     }
-    return res.status(201).json({ item: store.createConversation(req.user.id, { title, modelId: body.modelId }) });
+    return res.status(201).json({ item: await store.createConversation(req.user.id, { title, modelId: body.modelId }) });
   } catch (err) {
     return next(err);
   }
 });
 
-router.patch('/conversations/:id', (req, res, next) => {
+router.patch('/conversations/:id', async (req, res, next) => {
   try {
     const id = store.parseId(req.params.id);
-    if (!id || !store.findConversation(req.user.id, id)) return fail(res, 404, 'NOT_FOUND', '会话不存在');
+    if (!id || !(await store.findConversation(req.user.id, id))) return fail(res, 404, 'NOT_FOUND', '会话不存在');
     const read = readTitle((req.body || {}).title);
     if (!read.ok) return fail(res, 400, 'VALIDATION_ERROR', read.message);
-    return res.json({ item: store.renameConversation(req.user.id, id, read.value) });
+    return res.json({ item: await store.renameConversation(req.user.id, id, read.value) });
   } catch (err) {
     return next(err);
   }
 });
 
-router.delete('/conversations/:id', (req, res, next) => {
+router.delete('/conversations/:id', async (req, res, next) => {
   try {
     const id = store.parseId(req.params.id);
-    if (!id || !store.deleteConversation(req.user.id, id)) return fail(res, 404, 'NOT_FOUND', '会话不存在');
+    if (!id || !(await store.deleteConversation(req.user.id, id))) return fail(res, 404, 'NOT_FOUND', '会话不存在');
     return res.status(204).end();
   } catch (err) {
     return next(err);
   }
 });
 
-router.get('/conversations/:id/messages', (req, res, next) => {
+router.get('/conversations/:id/messages', async (req, res, next) => {
   try {
     const id = store.parseId(req.params.id);
-    if (!id || !store.findConversation(req.user.id, id)) return fail(res, 404, 'NOT_FOUND', '会话不存在');
-    return res.json({ items: store.listMessages(id) });
+    if (!id || !(await store.findConversation(req.user.id, id))) return fail(res, 404, 'NOT_FOUND', '会话不存在');
+    return res.json({ items: await store.listMessages(id) });
   } catch (err) {
     return next(err);
   }
@@ -192,21 +193,21 @@ router.get('/conversations/:id/messages', (req, res, next) => {
 
 router.post('/completions', async (req, res, next) => {
   try {
-    if (!isChatAllowed()) return fail(res, 403, 'CHAT_DISABLED', '管理员已暂停聊天服务');
+    if (!(await isChatAllowed())) return fail(res, 403, 'CHAT_DISABLED', '管理员已暂停聊天服务');
 
     const body = req.body || {};
     const message = readMessage(body.message);
     if (!message.ok) return fail(res, 400, 'VALIDATION_ERROR', message.message);
 
-    const resolved = store.resolveModel(body.modelId);
+    const resolved = await store.resolveModel(body.modelId);
     if (!resolved.ok) return fail(res, 400, resolved.code, resolved.message);
     const model = resolved.model;
 
-    const conversation = resolveConversation(req.user.id, body.conversationId, message.value, model.id);
+    const conversation = await resolveConversation(req.user.id, body.conversationId, message.value, model.id);
     if (!conversation.ok) return fail(res, 404, 'NOT_FOUND', '会话不存在');
 
-    const userMessage = store.appendMessage(conversation.id, store.ROLE_USER, message.value);
-    const history = store.conversationHistory(conversation.id);
+    const userMessage = await store.appendMessage(conversation.id, store.ROLE_USER, message.value);
+    const history = await store.conversationHistory(conversation.id);
 
     return await complete({
       res,

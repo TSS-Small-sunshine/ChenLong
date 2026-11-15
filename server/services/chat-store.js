@@ -21,7 +21,7 @@ function isEmptyId(raw) {
 }
 
 function escapeLike(value) {
-  return value.replace(/[\\%_]/g, (match) => `\\${match}`);
+  return value.replace(/[\\%_]/g, (match) => '\\' + match);
 }
 
 const SELECT_MODEL = `
@@ -61,28 +61,30 @@ function toConversation(row) {
     title: row.title || '',
     modelId: row.model_id === null || row.model_id === undefined ? null : row.model_id,
     modelName: displayName || row.model_model_id || '',
-    messageCount: row.message_count,
+    messageCount: Number(row.message_count),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
 }
 
-function listModels() {
-  return getDb()
+async function listModels() {
+  const rows = await getDb()
     .prepare(`${SELECT_MODEL} WHERE m.enabled = 1 ORDER BY m.is_default DESC, m.id ASC`)
-    .all()
-    .map(toModelItem);
+    .all();
+  return rows.map(toModelItem);
 }
 
-function resolveModel(rawModelId) {
+async function resolveModel(rawModelId) {
   const db = getDb();
   if (!isEmptyId(rawModelId)) {
     const id = parseId(rawModelId);
-    const row = id ? db.prepare(`${SELECT_MODEL} WHERE m.id = ? AND m.enabled = 1`).get(id) : undefined;
+    const row = id ? await db.prepare(`${SELECT_MODEL} WHERE m.id = ? AND m.enabled = 1`).get(id) : null;
     if (!row) return { ok: false, code: 'MODEL_NOT_AVAILABLE', message: '该模型不可用，请重新选择' };
     return { ok: true, model: row };
   }
-  const row = db.prepare(`${SELECT_MODEL} WHERE m.enabled = 1 ORDER BY m.is_default DESC, m.id ASC LIMIT 1`).get();
+  const row = await db
+    .prepare(`${SELECT_MODEL} WHERE m.enabled = 1 ORDER BY m.is_default DESC, m.id ASC LIMIT 1`)
+    .get();
   if (!row) {
     return {
       ok: false,
@@ -93,7 +95,7 @@ function resolveModel(rawModelId) {
   return { ok: true, model: row };
 }
 
-function listConversations(userId, keyword) {
+async function listConversations(userId, keyword) {
   let where = 'WHERE c.user_id = ?';
   const params = [userId];
   const trimmed = typeof keyword === 'string' ? keyword.trim() : '';
@@ -101,64 +103,69 @@ function listConversations(userId, keyword) {
     where += " AND c.title LIKE ? ESCAPE '\\'";
     params.push(`%${escapeLike(trimmed)}%`);
   }
-  return getDb()
+  const rows = await getDb()
     .prepare(`${SELECT_CONVERSATION} ${where} ORDER BY c.updated_at DESC, c.id DESC`)
-    .all(...params)
-    .map(toConversation);
+    .all(...params);
+  return rows.map(toConversation);
 }
 
-function findConversation(userId, id) {
-  const row = getDb().prepare(`${SELECT_CONVERSATION} WHERE c.id = ? AND c.user_id = ?`).get(id, userId);
+async function findConversation(userId, id) {
+  const row = await getDb()
+    .prepare(`${SELECT_CONVERSATION} WHERE c.id = ? AND c.user_id = ?`)
+    .get(id, userId);
   return row ? toConversation(row) : null;
 }
 
-function createConversation(userId, { title, modelId }) {
+async function createConversation(userId, { title, modelId }) {
   const db = getDb();
   const now = new Date().toISOString();
   const modelRow = isEmptyId(modelId)
-    ? undefined
-    : db.prepare('SELECT id FROM models WHERE id = ? AND enabled = 1').get(parseId(modelId) || 0);
-  const info = db
-    .prepare('INSERT INTO conversations (user_id, title, model_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
+    ? null
+    : await db.prepare('SELECT id FROM models WHERE id = ? AND enabled = 1').get(parseId(modelId) || 0);
+  const info = await db
+    .prepare('INSERT INTO conversations (user_id, title, model_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?) RETURNING id')
     .run(userId, title, modelRow ? modelRow.id : null, now, now);
-  return findConversation(userId, Number(info.lastInsertRowid));
+  return findConversation(userId, Number(info.rows[0].id));
 }
 
-function renameConversation(userId, id, title) {
-  const info = getDb().prepare('UPDATE conversations SET title = ? WHERE id = ? AND user_id = ?').run(title, id, userId);
+async function renameConversation(userId, id, title) {
+  const info = await getDb()
+    .prepare('UPDATE conversations SET title = ? WHERE id = ? AND user_id = ?')
+    .run(title, id, userId);
   if (info.changes === 0) return null;
   return findConversation(userId, id);
 }
 
-function deleteConversation(userId, id) {
-  return getDb().prepare('DELETE FROM conversations WHERE id = ? AND user_id = ?').run(id, userId).changes > 0;
+async function deleteConversation(userId, id) {
+  const info = await getDb().prepare('DELETE FROM conversations WHERE id = ? AND user_id = ?').run(id, userId);
+  return info.changes > 0;
 }
 
-function listMessages(conversationId) {
-  return getDb()
+async function listMessages(conversationId) {
+  const rows = await getDb()
     .prepare('SELECT id, role, content, created_at FROM messages WHERE conversation_id = ? ORDER BY id ASC')
-    .all(conversationId)
-    .map((row) => ({ id: row.id, role: row.role, content: row.content, createdAt: row.created_at }));
+    .all(conversationId);
+  return rows.map((row) => ({ id: row.id, role: row.role, content: row.content, createdAt: row.created_at }));
 }
 
-function appendMessage(conversationId, role, content) {
+async function appendMessage(conversationId, role, content) {
   const now = new Date().toISOString();
-  const info = getDb()
-    .prepare('INSERT INTO messages (conversation_id, role, content, created_at) VALUES (?, ?, ?, ?)')
+  const info = await getDb()
+    .prepare('INSERT INTO messages (conversation_id, role, content, created_at) VALUES (?, ?, ?, ?) RETURNING id')
     .run(conversationId, role, content, now);
-  return { id: Number(info.lastInsertRowid), createdAt: now };
+  return { id: Number(info.rows[0].id), createdAt: now };
 }
 
-function conversationHistory(conversationId, limit = HISTORY_LIMIT) {
-  const rows = getDb()
+async function conversationHistory(conversationId, limit = HISTORY_LIMIT) {
+  const rows = await getDb()
     .prepare('SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY id DESC LIMIT ?')
     .all(conversationId, limit);
   rows.reverse();
   return [{ role: 'system', content: SYSTEM_PROMPT }, ...rows.map((row) => ({ role: row.role, content: row.content }))];
 }
 
-function touchConversation(conversationId, modelId) {
-  getDb()
+async function touchConversation(conversationId, modelId) {
+  await getDb()
     .prepare('UPDATE conversations SET updated_at = ?, model_id = ? WHERE id = ?')
     .run(new Date().toISOString(), modelId, conversationId);
 }

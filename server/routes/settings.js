@@ -11,17 +11,17 @@ function readBody(req) {
   return body && typeof body === 'object' && !Array.isArray(body) ? body : {};
 }
 
-router.get('/', (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
-    return res.json({ items: settingsStore.readSettings() });
+    return res.json({ items: await settingsStore.readSettings() });
   } catch (err) {
     return next(err);
   }
 });
 
-router.patch('/', requireAuth, requireAdmin, (req, res, next) => {
+router.patch('/', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    const result = settingsStore.updateSettings(readBody(req));
+    const result = await settingsStore.updateSettings(readBody(req));
     if (!result.ok) {
       return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: result.message } });
     }

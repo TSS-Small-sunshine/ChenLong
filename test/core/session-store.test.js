@@ -3,16 +3,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { before, after, beforeEach } = require('node:test');
-const path = require('node:path');
 
-const Database = require('better-sqlite3');
-const SqliteSessionStore = require('../../server/services/session-store');
-const { createTempDir, removeDir } = require('../helpers/temp-db');
+const { installTestDatabase } = require('../helpers/temp-db');
 
 const TTL_MS = 60 * 60 * 1000;
-const tempDir = createTempDir('chenlong-session-store-');
-const dbFile = path.join(tempDir, 'sessions.db');
 
+let temp;
 let db;
 let store;
 
@@ -33,25 +29,42 @@ function session(userId, expiresAt) {
   };
 }
 
-before(() => {
-  db = new Database(dbFile);
-  db.pragma('journal_mode = WAL');
-  store = new SqliteSessionStore({ db, ttlMs: TTL_MS });
-  // 触发惰性建表
-  void store.db;
-});
-
-beforeEach(() => {
-  db.exec('DELETE FROM sessions');
-});
-
-after(() => {
-  try {
-    db.close();
-  } catch {
-    /* 已关闭 */
+async function waitForValue(factory, timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const value = await factory();
+    if (value !== null) return value;
+    if (Date.now() > deadline) return null;
+    await new Promise((resolve) => {
+      setTimeout(resolve, 20);
+    });
   }
-  removeDir(tempDir);
+}
+
+before(async () => {
+  temp = await installTestDatabase('chenlong_test_session_');
+  const initModule = require('../../server/database/init');
+  const dbModule = require('../../server/database/db');
+  db = dbModule.getDb();
+  const PgSessionStore = require('../../server/services/session-store');
+
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  try {
+    await initModule.initDatabase(); // 建表（含 sessions）+ 播种默认设置
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  store = new PgSessionStore({ db, ttlMs: TTL_MS });
+});
+
+beforeEach(async () => {
+  await db.prepare('TRUNCATE sessions').run();
+});
+
+after(async () => {
+  if (temp) await temp.cleanup();
 });
 
 test('set/get：会话写入后可读出，重复 set 覆盖旧值', async () => {
@@ -69,7 +82,8 @@ test('set/get：会话写入后可读出，重复 set 覆盖旧值', async () =>
 test('set：session 没有 cookie.expires 时按 ttlMs 兜底', async () => {
   const startedAt = Date.now();
   await call('set', 'sid-ttl', { userId: 1 });
-  const row = db.prepare('SELECT expire FROM sessions WHERE sid = ?').get('sid-ttl');
+  const row = await db.prepare('SELECT expire FROM sessions WHERE sid = ?').get('sid-ttl');
+  assert.equal(typeof row.expire, 'number', 'expire 应为 number（int8 已统一转换）');
   assert.ok(row.expire >= startedAt + TTL_MS - 5_000);
   assert.ok(row.expire <= startedAt + TTL_MS + 5_000);
 });
@@ -80,7 +94,7 @@ test('touch：延长已存在会话的过期时间；不存在时退化为 set',
   await call('set', 'sid-touch', session(7, expiresSoon));
   await call('touch', 'sid-touch', session(7, expiresLater));
 
-  const row = db.prepare('SELECT expire FROM sessions WHERE sid = ?').get('sid-touch');
+  const row = await db.prepare('SELECT expire FROM sessions WHERE sid = ?').get('sid-touch');
   assert.equal(row.expire, new Date(expiresLater).getTime());
   // touch 只更新过期时间列，不重写 session JSON，因此 cookie.expires 仍是旧值
   assert.deepEqual(await call('get', 'sid-touch'), session(7, expiresSoon));
@@ -98,7 +112,7 @@ test('destroy：删除后读不到', async () => {
 
 test('get：过期会话返回 null 并清理数据库行', async () => {
   await call('set', 'sid-expired', session(5));
-  db.prepare('UPDATE sessions SET expire = ? WHERE sid = ?').run(Date.now() - 1_000, 'sid-expired');
+  await db.prepare('UPDATE sessions SET expire = ? WHERE sid = ?').run(Date.now() - 1_000, 'sid-expired');
   assert.equal(await call('get', 'sid-expired'), null);
   assert.equal(await call('length'), 0);
 });
@@ -107,14 +121,11 @@ test('cleanup：只删除已过期会话，并返回删除条数', async () => {
   await call('set', 'sid-s1', session(1));
   await call('set', 'sid-s2', session(2));
   const now = Date.now();
-  db.prepare('UPDATE sessions SET expire = ? WHERE sid = ?').run(now - 10, 'sid-s1');
+  await db.prepare('UPDATE sessions SET expire = ? WHERE sid = ?').run(now - 10, 'sid-s1');
 
-  assert.equal(store.cleanup(now), 1);
+  assert.equal(await store.cleanup(now), 1);
   assert.equal(await call('length'), 1);
-  assert.deepEqual(
-    Object.keys(await call('all')),
-    ['sid-s2']
-  );
+  assert.deepEqual(Object.keys(await call('all')), ['sid-s2']);
 });
 
 test('all / length / clear：批量读取与清空', async () => {
@@ -130,7 +141,10 @@ test('all / length / clear：批量读取与清空', async () => {
   assert.deepEqual(await call('all'), Object.create(null));
 });
 
-test('set/destroy 可省略回调且不抛错', () => {
+test('set/destroy 可省略回调（异步完成，不抛同步错误）', async () => {
   assert.doesNotThrow(() => store.set('sid-no-callback', session(9)));
+  assert.deepEqual(await waitForValue(() => call('get', 'sid-no-callback')), session(9));
+
   assert.doesNotThrow(() => store.destroy('sid-no-callback'));
+  assert.equal(await waitForValue(() => call('get', 'sid-no-callback')), null);
 });

@@ -8,7 +8,7 @@
 | 项目 | 配置 |
 |---|---|
 | 合并前置 | **必须 PR**；管理员（enforce_admins）同样不能直接 push |
-| 必需检查 | `Test (Node 24)`、`Analyze JavaScript/TypeScript`、`Dependency review`、`PR guard` |
+| 必需检查 | `Test (Node 24)`（含 PostgreSQL 17 service 容器）、`Analyze JavaScript/TypeScript`、`Dependency review`、`PR guard` |
 | 分支新鲜度 | strict：PR 分支必须与 main 同步（落后会要求先 update branch） |
 | 审批 | 当前 0 个必需批准（单人维护，避免自己无法批准自己）；接入协作者后建议改为 1 + CODEOWNERS |
 | 线性历史 | 要求线性历史；仓库只允许 **Squash merge**，合并后自动删分支 |
@@ -38,7 +38,7 @@
 
 ```text
 Fork / 分支 → 开 PR
-   ├─ CI: Test (Node 24)              （必须绿）
+   ├─ CI: Test (Node 24)              （必须绿；job 内启动 PostgreSQL 17 service）
    ├─ CodeQL: Analyze JS/TS           （必须绿，安全告警在 Security 页）
    ├─ Dependency review               （必须绿，无高危依赖变更）
    ├─ PR guard                        （必须绿；Fork PR 只检查不评论）
@@ -51,7 +51,8 @@ Fork / 分支 → 开 PR
 1. **main 直推一定失败**（即使管理员）；本地开发也必须建分支 → PR；
 2. 分支落后会被 strict 规则拦住，点 **Update branch** 或本地 rebase 后重推；
 3. Fork PR 的 `GITHUB_TOKEN` 是只读的，PR guard 无法留言/加标签，但必需检查照常判定；如需对 Fork 也自动评论，可改用 `pull_request_target`，但那会以写权限运行不可信代码，**不推荐**；
-4. 涉及 `.github/`、`server/middleware/`、加密与 SSRF 相关文件的 PR 建议额外人工重点看（CODEOWNERS 已列出）。
+4. 涉及 `.github/`、`server/middleware/`、加密与 SSRF 相关文件的 PR 建议额外人工重点看（CODEOWNERS 已列出）；
+5. **CI 的数据库依赖**：`Test (Node 24)` job 启动 `postgres:17` service 容器（`pg_isready` 健康检查）并把 `DATABASE_URL` 注入测试；`Docker image` job 用 `docker compose` 起 `db + app` 两个服务做 `/api/health` 与首页冒烟（不再是单容器 `docker run`）。
 
 ## 4. 可选的 AI 代码审查机器人
 
@@ -113,6 +114,7 @@ gh api -X PATCH repos/TSS-Small-sunshine/ChenLong \
 | CodeQL 没出现在 PR | 仓库 Actions 被限制、或 workflow 语法错误 | Actions 页看 run；`gh workflow list` 确认状态 |
 | Dependabot 一直不提 PR | 仓库 Dependency Graph / Dependabot alerts 未开、或配置语法错误 | Settings → Code security 检查；`gh api repos/...` 查看 `security_and_analysis` |
 | Dependency review 报 `Dependency graph is not enabled` | 新建仓库依赖图未就绪或被关闭 | 开启 Dependabot alerts：`gh api -X PUT repos/TSS-Small-sunshine/ChenLong/vulnerability-alerts`，等约 20–60 秒后 rerun 该检查（本仓库首次即踩此坑，已修复） |
+| Test job 报无法连接 PostgreSQL | service 未健康或 `DATABASE_URL` 未注入 | 看 service 容器日志/healthcheck；确认 `PGHOST/PGPORT/PGUSER/PGPASSWORD` 与测试环境一致 |
 | Actions 提示 Node 20 deprecated | `actions/checkout@v4`、`dependency-review-action@v4` 等仍以 Node 20 发布，被强制运行在 Node 24 | 属官方提示，不影响结果；后续跟随 Dependabot 升级到新版本即可 |
 | 管理员也推不了 main | enforce_admins 生效（本意） | 走 PR；紧急情况先临时调整保护再改回（不推荐） |
 

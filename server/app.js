@@ -6,12 +6,12 @@ const express = require('express');
 const session = require('express-session');
 
 const { initDatabase } = require('./database/init');
-const { getDb, closeDb } = require('./database/db');
+const { closeDb, ping } = require('./database/db');
 const { attachUser } = require('./middleware/auth');
 const { ensureCsrfToken, requireCsrf } = require('./middleware/csrf');
 const { securityHeaders } = require('./middleware/security-headers');
 const { createRateLimiter } = require('./services/rate-limit');
-const SqliteSessionStore = require('./services/session-store');
+const PgSessionStore = require('./services/session-store');
 const { resolveDevSecrets } = require('./services/dev-secrets');
 const { verifyKey } = require('./services/encryption');
 const pkg = require('../package.json');
@@ -138,7 +138,7 @@ app.use(
   session({
     name: 'chenlong.sid',
     secret: process.env.SESSION_SECRET,
-    store: new SqliteSessionStore(),
+    store: new PgSessionStore(),
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -158,9 +158,9 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res, next) => {
   try {
-    getDb().prepare('SELECT 1 AS ok').get();
+    await ping();
   } catch (err) {
     console.error('[health] 数据库检查失败：', err.message);
     return res.status(503).json({
@@ -221,9 +221,9 @@ app.use((err, req, res, next) => {
   return res.status(status).json({ error: { code, message } });
 });
 
-function start() {
+async function start() {
   try {
-    const result = initDatabase();
+    const result = await initDatabase();
     if (result.settingsInserted > 0) {
       console.log(`[db] 已写入默认设置 ${result.settingsInserted} 条`);
     }
@@ -242,8 +242,7 @@ function start() {
     } else {
       console.error('[FATAL] 服务启动失败：', err.message);
     }
-    closeDb();
-    process.exit(1);
+    closeDb().catch(() => {}).finally(() => process.exit(1));
   });
 
   let shuttingDown = false;
@@ -252,9 +251,12 @@ function start() {
     shuttingDown = true;
     console.log(`\n收到 ${signal}，正在关闭服务...`);
     const finish = () => {
-      closeDb();
-      console.log('服务已安全关闭');
-      process.exit(0);
+      closeDb()
+        .catch(() => {})
+        .finally(() => {
+          console.log('服务已安全关闭');
+          process.exit(0);
+        });
     };
     server.close(finish);
     setTimeout(finish, 5000).unref();
@@ -269,4 +271,9 @@ function start() {
 module.exports = app;
 module.exports.start = start;
 
-if (require.main === module) start();
+if (require.main === module) {
+  start().catch((err) => {
+    console.error('[FATAL] 服务启动失败：', err.message);
+    process.exit(1);
+  });
+}

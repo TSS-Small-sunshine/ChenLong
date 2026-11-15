@@ -15,16 +15,16 @@ function fail(res, status, code, message) {
 
 router.use(requireAuth);
 
-router.patch('/profile', (req, res, next) => {
+router.patch('/profile', async (req, res, next) => {
   try {
     const nickname = validateNickname((req.body || {}).nickname);
     if (!nickname.ok) return fail(res, 400, 'VALIDATION_ERROR', nickname.message);
 
     const db = getDb();
-    const info = db.prepare('UPDATE users SET nickname = ? WHERE id = ?').run(nickname.value, req.user.id);
+    const info = await db.prepare('UPDATE users SET nickname = ? WHERE id = ?').run(nickname.value, req.user.id);
     if (info.changes === 0) return fail(res, 401, 'UNAUTHORIZED', '请先登录');
 
-    const user = db
+    const user = await db
       .prepare('SELECT id, username, nickname, role, created_at FROM users WHERE id = ?')
       .get(req.user.id);
     return res.json({ user: toPublicUser(user) });
@@ -43,21 +43,21 @@ router.patch('/password', async (req, res, next) => {
     if (!newPassword.ok) return fail(res, 400, 'VALIDATION_ERROR', newPassword.message);
 
     const db = getDb();
-    const row = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user.id);
+    const row = await db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user.id);
     if (!row) return fail(res, 401, 'UNAUTHORIZED', '请先登录');
 
     const matched = await bcrypt.compare(currentPassword, row.password_hash);
     if (!matched) return fail(res, 400, 'VALIDATION_ERROR', '当前密码不正确');
 
     const passwordHash = await bcrypt.hash(newPassword.value, BCRYPT_COST);
-    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, req.user.id);
+    await db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, req.user.id);
 
     // 改密后让其它设备上的旧会话失效，但保留当前会话（不让用户改完密码就把自己踢下线）
     let revokedSessions = 0;
     try {
       const store = req.sessionStore;
       if (store && typeof store.destroyOthersByUserId === 'function') {
-        revokedSessions = store.destroyOthersByUserId(req.user.id, req.sessionID);
+        revokedSessions = await store.destroyOthersByUserId(req.user.id, req.sessionID);
         if (revokedSessions > 0) {
           console.log('[profile] 用户 ' + req.user.id + ' 改密后失效其它会话 ' + revokedSessions + ' 条');
         }

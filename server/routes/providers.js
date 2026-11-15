@@ -68,7 +68,7 @@ function toProvider(row) {
   };
 }
 
-function getProviderRow(id) {
+async function getProviderRow(id) {
   return getDb().prepare(`${SELECT_PROVIDER} WHERE p.id = ?`).get(id);
 }
 
@@ -107,20 +107,20 @@ function readApiKey(raw) {
   return { ok: true, value };
 }
 
-router.get('/', (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
-    const rows = getDb().prepare(`${SELECT_PROVIDER} ORDER BY p.id DESC`).all();
+    const rows = await getDb().prepare(`${SELECT_PROVIDER} ORDER BY p.id DESC`).all();
     return res.json({ items: rows.map(toProvider) });
   } catch (err) {
     return next(err);
   }
 });
 
-router.get('/:id', (req, res, next) => {
+router.get('/:id', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return fail(res, 404, 'NOT_FOUND', 'API 服务不存在');
-    const row = getProviderRow(id);
+    const row = await getProviderRow(id);
     if (!row) return fail(res, 404, 'NOT_FOUND', 'API 服务不存在');
     return res.json({ item: toProvider(row) });
   } catch (err) {
@@ -148,10 +148,11 @@ router.post('/', async (req, res, next) => {
     if (!enabled.ok) return fail(res, 400, 'VALIDATION_ERROR', enabled.message);
 
     const now = new Date().toISOString();
-    const info = getDb()
+    const info = await getDb()
       .prepare(
         `INSERT INTO api_providers (name, base_url, api_key_encrypted, api_type, enabled, description, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         RETURNING id`
       )
       .run(
         name.value,
@@ -164,7 +165,8 @@ router.post('/', async (req, res, next) => {
         now
       );
 
-    return res.status(201).json({ item: toProvider(getProviderRow(info.lastInsertRowid)) });
+    const createdId = info.rows[0] ? info.rows[0].id : null;
+    return res.status(201).json({ item: toProvider(await getProviderRow(createdId)) });
   } catch (err) {
     return next(err);
   }
@@ -174,7 +176,7 @@ router.patch('/:id', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return fail(res, 404, 'NOT_FOUND', 'API 服务不存在');
-    const existing = getDb().prepare('SELECT id FROM api_providers WHERE id = ?').get(id);
+    const existing = await getDb().prepare('SELECT id FROM api_providers WHERE id = ?').get(id);
     if (!existing) return fail(res, 404, 'NOT_FOUND', 'API 服务不存在');
 
     const body = req.body || {};
@@ -224,19 +226,19 @@ router.patch('/:id', async (req, res, next) => {
 
     updates.push('updated_at = ?');
     params.push(new Date().toISOString());
-    getDb().prepare(`UPDATE api_providers SET ${updates.join(', ')} WHERE id = ?`).run(...params, id);
+    await getDb().prepare(`UPDATE api_providers SET ${updates.join(', ')} WHERE id = ?`).run(...params, id);
 
-    return res.json({ item: toProvider(getProviderRow(id)) });
+    return res.json({ item: toProvider(await getProviderRow(id)) });
   } catch (err) {
     return next(err);
   }
 });
 
-router.delete('/:id', (req, res, next) => {
+router.delete('/:id', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return fail(res, 404, 'NOT_FOUND', 'API 服务不存在');
-    const info = getDb().prepare('DELETE FROM api_providers WHERE id = ?').run(id);
+    const info = await getDb().prepare('DELETE FROM api_providers WHERE id = ?').run(id);
     if (info.changes === 0) return fail(res, 404, 'NOT_FOUND', 'API 服务不存在');
     return res.status(204).end();
   } catch (err) {
@@ -244,19 +246,19 @@ router.delete('/:id', (req, res, next) => {
   }
 });
 
-router.patch('/:id/status', (req, res, next) => {
+router.patch('/:id/status', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return fail(res, 404, 'NOT_FOUND', 'API 服务不存在');
     const body = req.body || {};
     if (typeof body.enabled !== 'boolean') return fail(res, 400, 'VALIDATION_ERROR', 'enabled 需为布尔值');
 
-    const info = getDb()
+    const info = await getDb()
       .prepare('UPDATE api_providers SET enabled = ?, updated_at = ? WHERE id = ?')
       .run(body.enabled ? 1 : 0, new Date().toISOString(), id);
     if (info.changes === 0) return fail(res, 404, 'NOT_FOUND', 'API 服务不存在');
 
-    return res.json({ item: toProvider(getProviderRow(id)) });
+    return res.json({ item: toProvider(await getProviderRow(id)) });
   } catch (err) {
     return next(err);
   }
@@ -266,7 +268,7 @@ router.post('/:id/test', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return fail(res, 404, 'NOT_FOUND', 'API 服务不存在');
-    const row = getDb().prepare('SELECT id, base_url, api_key_encrypted FROM api_providers WHERE id = ?').get(id);
+    const row = await getDb().prepare('SELECT id, base_url, api_key_encrypted FROM api_providers WHERE id = ?').get(id);
     if (!row) return fail(res, 404, 'NOT_FOUND', 'API 服务不存在');
 
     let apiKey;
@@ -298,7 +300,7 @@ router.post('/:id/refresh-models', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return fail(res, 404, 'NOT_FOUND', 'API 服务不存在');
-    const row = getDb().prepare('SELECT id, base_url, api_key_encrypted FROM api_providers WHERE id = ?').get(id);
+    const row = await getDb().prepare('SELECT id, base_url, api_key_encrypted FROM api_providers WHERE id = ?').get(id);
     if (!row) return fail(res, 404, 'NOT_FOUND', 'API 服务不存在');
 
     let apiKey;
@@ -313,18 +315,21 @@ router.post('/:id/refresh-models', async (req, res, next) => {
     if (!result.ok) return fail(res, 502, 'UPSTREAM_ERROR', result.message);
 
     const db = getDb();
-    const insert = db.prepare(
-      `INSERT OR IGNORE INTO models (provider_id, model_id, display_name, enabled, is_default, status, created_at)
-       VALUES (?, ?, NULL, 0, 0, 'discovered', ?)`
-    );
+    const insertSql = `INSERT INTO models (provider_id, model_id, display_name, enabled, is_default, status, created_at)
+       VALUES (?, ?, NULL, 0, 0, 'discovered', ?)
+       ON CONFLICT (provider_id, model_id) DO NOTHING`;
     const now = new Date().toISOString();
-    const added = db.transaction((modelIds) => {
+    const added = await db.transaction(async (tx) => {
       let count = 0;
-      for (const modelId of modelIds) count += insert.run(id, modelId, now).changes;
+      for (const modelId of result.models) {
+        const info = await tx.run(insertSql, id, modelId, now);
+        count += info.changes;
+      }
       return count;
-    })(result.models);
+    });
 
-    const total = db.prepare('SELECT COUNT(*) AS total FROM models WHERE provider_id = ?').get(id).total;
+    const totalRow = await db.prepare('SELECT COUNT(*) AS total FROM models WHERE provider_id = ?').get(id);
+    const total = totalRow.total;
     return res.json({ ok: true, added, total, message: `新增 ${added} 个模型，当前共 ${total} 个` });
   } catch (err) {
     return next(err);

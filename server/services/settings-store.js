@@ -49,14 +49,10 @@ function toText(raw) {
   return raw === null || raw === undefined ? '' : String(raw);
 }
 
-// 每次读库（SQLite 很快），缺键时回落到默认值，不抛 500
-function readSettings() {
-  const stored = new Map(
-    getDb()
-      .prepare('SELECT setting_key, setting_value FROM settings')
-      .all()
-      .map((row) => [row.setting_key, row.setting_value])
-  );
+// 每次读库（查询很小），缺键时回落到默认值，不抛 500
+async function readSettings() {
+  const rows = await getDb().prepare('SELECT setting_key, setting_value FROM settings').all();
+  const stored = new Map(rows.map((row) => [row.setting_key, row.setting_value]));
   const base = getDefaults();
   const items = {};
   for (const field of FIELDS) {
@@ -66,8 +62,8 @@ function readSettings() {
   return items;
 }
 
-function readSwitch(dbKey) {
-  const row = getDb().prepare('SELECT setting_value FROM settings WHERE setting_key = ?').get(dbKey);
+async function readSwitch(dbKey) {
+  const row = await getDb().prepare('SELECT setting_value FROM settings WHERE setting_key = ?').get(dbKey);
   return toBoolean(row ? row.setting_value : getDefaults()[dbKey]);
 }
 
@@ -88,7 +84,7 @@ function invalid(message) {
 }
 
 // 只写入请求里出现的键；未知键忽略
-function updateSettings(body) {
+async function updateSettings(body) {
   const patch = {};
 
   if (body.siteName !== undefined) {
@@ -133,18 +129,21 @@ function updateSettings(body) {
 
   const entries = Object.entries(patch);
   if (entries.length > 0) {
-    const db = getDb();
     const now = new Date().toISOString();
-    const stmt = db.prepare(
-      `INSERT INTO settings (setting_key, setting_value, updated_at) VALUES (?, ?, ?)
-       ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_at = excluded.updated_at`
-    );
-    db.transaction((rows) => {
-      for (const [key, value] of rows) stmt.run(key, value, now);
-    })(entries);
+    await getDb().transaction(async (tx) => {
+      for (const [key, value] of entries) {
+        await tx.run(
+          'INSERT INTO settings (setting_key, setting_value, updated_at) VALUES (?, ?, ?) ' +
+            'ON CONFLICT (setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_at = excluded.updated_at',
+          key,
+          value,
+          now
+        );
+      }
+    });
   }
 
-  return { ok: true, items: readSettings() };
+  return { ok: true, items: await readSettings() };
 }
 
 module.exports = {
