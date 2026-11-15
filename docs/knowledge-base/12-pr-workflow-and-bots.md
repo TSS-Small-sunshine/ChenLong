@@ -13,7 +13,7 @@
 | 审批 | 当前 0 个必需批准（单人维护，避免自己无法批准自己）；接入协作者后建议改为 1 + CODEOWNERS |
 | 线性历史 | 要求线性历史；仓库只允许 **Squash merge**，合并后自动删分支 |
 | 其他 | 禁止 force push / 删除 main；要求对话解决后才能合并；Allow auto-merge 已开启 |
-| 安全兜底 | Secret Scanning + Push Protection 已开启；Dependabot security updates 已开启 |
+| 安全兜底 | Secret Scanning + Push Protection 已开启；Dependabot security updates 已开启；Dependency graph 已开启（依赖审查依赖它） |
 
 > 常见疑问：单人仓库为什么还要 0 审批？因为「PR + 必需检查」本身就能阻止直接改 main、并强制走 CI 与机器人；以后加协作者时再打开「1 个批准 + CODEOWNERS 强制审核」。
 
@@ -23,7 +23,7 @@
 |---|---|---|---|---|
 | **PR guard**（本仓库内置，`.github/workflows/pr-guard.yml`） | PR opened/synchronize/reopened/edited | ① 禁止 `data/**.db*`、`.env*`、`node_modules/`、私钥/证书、`.dev-secrets.json` 等路径；② 新增行疑似密钥（`gho_/ghp_/github_pat_/AKIA/sk-/PRIVATE KEY`）；③ PR 规模（S/M/L 标签）；④ 标题是否符合 Conventional Commits；⑤ 描述是否过短 | PR 评论 + Review + 标签（`security-ok`/`security-review`、`size/*`、`review-bot`） | 违规 → PR Guard 检查失败 + Review 请求修改；来自 Fork 的 PR 因 GITHUB_TOKEN 只读**无法评论**（检查仍会跑） |
 | **CodeQL**（`.github/workflows/codeql.yml`） | push main / PR / 每周一 / 手动 | JS/TS 代码安全缺陷（注入、路径遍历、原型污染等） | Actions + Security → Code scanning（SARIF） | 公共仓库免费；PR 上会显示 `Analyze JavaScript/TypeScript` 检查 |
-| **Dependency review**（`.github/workflows/dependency-review.yml`） | PR | 新增/升级依赖是否引入 **high 及以上**漏洞、许可证风险 | PR 检查 + 失败时评论摘要 | 只对 PR 生效；无依赖变更时也会跑并通过 |
+| **Dependency review**（`.github/workflows/dependency-review.yml`） | PR | 新增/升级依赖是否引入 **high 及以上**漏洞、许可证风险 | PR 检查 + 失败时评论摘要 | 只对 PR 生效；无依赖变更时也会跑并通过；**需要仓库 Dependency graph 已开启**（新建仓库若未就绪会报错，见 §6） |
 | **Dependabot**（`.github/dependabot.yml`） | 每周一 03:00/03:30（Asia/Shanghai） | 自动提 npm 依赖与 GitHub Actions 升级 PR | PR 列表 | 同样走上面所有检查；minor+patch 已分组减少噪音 |
 | **GitHub Secret Scanning** | push / PR | 常见密钥 + Push Protection | Security → Secret scanning | 已在仓库设置开启 |
 
@@ -112,6 +112,8 @@ gh api -X PATCH repos/TSS-Small-sunshine/ChenLong \
 | PR guard 评论/标签缺失 | Fork PR 的 token 只读 | 预期行为；K 检查仍有效，必要时人工留评 |
 | CodeQL 没出现在 PR | 仓库 Actions 被限制、或 workflow 语法错误 | Actions 页看 run；`gh workflow list` 确认状态 |
 | Dependabot 一直不提 PR | 仓库 Dependency Graph / Dependabot alerts 未开、或配置语法错误 | Settings → Code security 检查；`gh api repos/...` 查看 `security_and_analysis` |
+| Dependency review 报 `Dependency graph is not enabled` | 新建仓库依赖图未就绪或被关闭 | 开启 Dependabot alerts：`gh api -X PUT repos/TSS-Small-sunshine/ChenLong/vulnerability-alerts`，等约 20–60 秒后 rerun 该检查（本仓库首次即踩此坑，已修复） |
+| Actions 提示 Node 20 deprecated | `actions/checkout@v4`、`dependency-review-action@v4` 等仍以 Node 20 发布，被强制运行在 Node 24 | 属官方提示，不影响结果；后续跟随 Dependabot 升级到新版本即可 |
 | 管理员也推不了 main | enforce_admins 生效（本意） | 走 PR；紧急情况先临时调整保护再改回（不推荐） |
 
 ## 7. 后续建议
