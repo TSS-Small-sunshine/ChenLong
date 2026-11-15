@@ -142,8 +142,9 @@ test('all / length / clear：批量读取与清空', async () => {
 });
 
 test('set/destroy 可省略回调（异步完成，不抛同步错误）', async () => {
-  assert.doesNotThrow(() => store.set('sid-no-callback', session(9)));
-  assert.deepEqual(await waitForValue(() => call('get', 'sid-no-callback')), session(9));
+  const expected = session(9);
+  assert.doesNotThrow(() => store.set('sid-no-callback', expected));
+  assert.deepEqual(await waitForValue(() => call('get', 'sid-no-callback')), expected);
 
   assert.doesNotThrow(() => store.destroy('sid-no-callback'));
   assert.equal(await waitForValue(() => call('get', 'sid-no-callback')), null);
