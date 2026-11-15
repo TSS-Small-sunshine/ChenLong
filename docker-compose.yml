@@ -1,0 +1,40 @@
+name: chenlong
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: chenlong:local
+    container_name: chenlong
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DB_PATH: /app/data/chenlong.db
+      # 仅在可信反向代理（Nginx/Caddy）之后开启，避免 X-Forwarded-For 伪造；
+      # 直接暴露端口时保持注释状态：
+      # TRUST_PROXY: "1"
+    ports:
+      # 默认只绑定本机回环，由反向代理对外提供 HTTPS
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(function (r) { process.exit(r.ok ? 0 : 1) }).catch(function () { process.exit(1) })"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

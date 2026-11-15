@@ -119,7 +119,16 @@ location / {
 - Windows：NSSM / WinSw 注册为服务；
 - 注意：`server.close()` 会等待活动连接（含 SSE）结束，最长 5 秒后强退——重启时正在聊天的用户会被断开。
 
-### 5.3 升级流程
+### 5.3 Docker 部署（推荐）
+
+- 仓库自带 `Dockerfile` + `docker-compose.yml`：多阶段构建、非 root（`node` 用户）、内置 healthcheck、`./data` 卷持久化、日志轮转；
+- 快速：`cp .env.example .env` 填生产密钥 → `mkdir -p data && sudo chown -R 1000:1000 data`（Linux）→ `docker compose up -d --build` → `curl 127.0.0.1:3000/api/health`；
+- 容器默认只把 3000 绑到 `127.0.0.1`，由反代提供 HTTPS；反代后需 `TRUST_PROXY=1`，否则 secure Cookie/HSTS/限流 IP 都会有问题；
+- **只支持单副本**（SQLite 单写者 + 限流内存态），不要 `docker compose scale`；
+- CI 的 `Docker image` job 会在 Linux runner 上 `docker build` 并启动容器做 `/api/health` + 首页冒烟（非必需检查，但每次 PR 都会跑）；
+- 完整命令、备份/恢复、升级与排错见仓库根 [docs/DEPLOY-DOCKER.md](../DEPLOY-DOCKER.md)。
+
+### 5.4 升级流程
 
 `npm install`（或 `npm ci`）→ 备份数据库（`npm run backup`）→ 改表则 `npm run init-db` → `npm test` 通过 → 重启进程 → 验证 §3.3。  
 **没有 migration 框架**：跨版本改表必须手工迁移，升级前先在备份库上演练。

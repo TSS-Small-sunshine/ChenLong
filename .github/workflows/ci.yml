@@ -33,3 +33,47 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate compose file
+        run: |
+          cp .env.example .env
+          docker compose config -q
+          rm -f .env
+
+      - name: Build image
+        run: docker build --pull -t chenlong:ci .
+
+      - name: Run container smoke test
+        run: |
+          docker run -d --name chenlong-ci -p 127.0.0.1:18080:3000 \
+            -e NODE_ENV=production \
+            -e SESSION_SECRET="$(openssl rand -hex 32)" \
+            -e ENCRYPTION_KEY="$(openssl rand -hex 32)" \
+            -e ADMIN_USERNAME=admin \
+            -e ADMIN_PASSWORD='AdminPass123' \
+            chenlong:ci
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:18080/api/health >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          echo '--- health ---'
+          curl -fsS http://127.0.0.1:18080/api/health
+          echo '--- home page index ---'
+          curl -fsS -o /dev/null -w 'HTTP %{http_code}\n' http://127.0.0.1:18080/
+          test "$(curl -fsS -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/)" = '200'
+
+      - name: Container logs
+        if: always()
+        run: docker logs chenlong-ci || true
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f chenlong-ci || true
