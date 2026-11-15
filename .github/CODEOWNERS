@@ -1,0 +1,10 @@
+# 默认全部文件由维护者审核（接入团队后可改为 @org/team）
+* @TSS-Small-sunshine
+
+# 安全与基础设施关键路径
+/.github/ @TSS-Small-sunshine
+/.env.example @TSS-Small-sunshine
+/server/middleware/ @TSS-Small-sunshine
+/server/services/encryption.js @TSS-Small-sunshine
+/server/services/upstream-guard.js @TSS-Small-sunshine
+/server/database/init.js @TSS-Small-sunshine
