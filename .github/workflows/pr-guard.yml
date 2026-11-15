@@ -1,0 +1,138 @@
+name: PR guard
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  guard:
+    name: PR guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Review pull request
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- pr-guard -->';
+            const { owner, repo } = context.repo;
+            const pr = context.payload.pull_request;
+            const num = pr.number;
+            
+            const files = await github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number: num, per_page: 100 });
+            
+            const blockedExact = ['.env', '.env.local', '.env.production', '.dev-secrets.json'];
+            const blockedPrefixes = ['data/', 'node_modules/'];
+            const blockedSuffixes = ['.db', '.db-wal', '.db-shm', '.sqlite', '.sqlite3', '.pem', '.key', '.p12'];
+            const secretPatterns = [
+              /gho_[A-Za-z0-9]{20,}/,
+              /ghp_[A-Za-z0-9]{20,}/,
+              /github_pat_[A-Za-z0-9_]{20,}/,
+              /AKIA[0-9A-Z]{16}/,
+              /-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----/,
+              /sk-[A-Za-z0-9]{32,}/,
+            ];
+            
+            const violations = [];
+            const warnings = [];
+            const blockedFiles = [];
+            const leaked = [];
+            let totalChanges = 0;
+            
+            for (const f of files) {
+              totalChanges += (f.additions || 0) + (f.deletions || 0);
+              const name = f.filename;
+              if (blockedExact.includes(name) || blockedPrefixes.some((p) => name.startsWith(p)) || blockedSuffixes.some((s) => name.endsWith(s))) {
+                blockedFiles.push(name);
+              }
+              const patch = f.patch || '';
+              if (patch) {
+                for (const line of patch.split('\n')) {
+                  if (!line.startsWith('+') || line.startsWith('+++')) continue;
+                  const added = line.slice(1);
+                  if (secretPatterns.some((re) => re.test(added))) {
+                    leaked.push(name);
+                    break;
+                  }
+                }
+              }
+            }
+            
+            if (blockedFiles.length) violations.push('禁止提交的数据/敏感文件：' + blockedFiles.join(', '));
+            if (leaked.length) violations.push('疑似密钥/私钥内容：' + [...new Set(leaked)].join(', '));
+            
+            const titlePattern = /^(feat|fix|docs|ci|chore|refactor|test|perf|build|revert)(\([a-z0-9-]+\))?: .+/;
+            if (!titlePattern.test(pr.title)) warnings.push('PR 标题建议使用 Conventional Commits 格式，例如 ' + BT + 'fix(chat): 修复空闲超时文案' + BT);
+            if (!pr.body || pr.body.trim().length < 20) warnings.push('PR 描述过短，请在描述中补充 Summary / Changes / Test plan（模板已内置）。');
+            if (totalChanges > 1500) warnings.push('本次变更 ' + totalChanges + ' 行，属于大 PR，建议拆分以便审查。');
+            
+            const size = totalChanges > 1500 ? 'size/L' : totalChanges > 300 ? 'size/M' : 'size/S';
+            const status = violations.length ? '❌ 需要修改' : '✅ 通过';
+            const lines = [];
+            lines.push(marker);
+            lines.push('## 🤖 PR Guard 自动审查');
+            lines.push('');
+            lines.push('| 检查项 | 结果 |');
+            lines.push('| --- | --- |');
+            lines.push('| 敏感/数据文件 | ' + (blockedFiles.length ? '❌ ' + blockedFiles.join(', ') : '✅ 未发现') + ' |');
+            lines.push('| 疑似密钥内容 | ' + (leaked.length ? '❌ ' + [...new Set(leaked)].join(', ') : '✅ 未发现') + ' |');
+            lines.push('| 变更规模 | ' + totalChanges + ' 行（' + size.replace('size/', '') + '） |');
+            lines.push('| 标题规范 | ' + (titlePattern.test(pr.title) ? '✅' : '⚠️ 建议修正') + ' |');
+            lines.push('');
+            if (warnings.length) {
+              lines.push('### ⚠️ 提示');
+              for (const w of warnings) lines.push('- ' + w);
+              lines.push('');
+            }
+            if (violations.length) {
+              lines.push('### ❌ 阻塞项');
+              for (const v of violations) lines.push('- ' + v);
+              lines.push('');
+              lines.push('安全规则：本仓库禁止提交 .env、数据库文件、私钥或任何真实密钥；若确需调整，请先联系维护者。');
+              lines.push('');
+            }
+            lines.push('> 由 GitHub Actions PR Guard 自动生成；结论：' + status);
+            const body = lines.join('\n');
+            
+            try {
+              const labels = ['review-bot', size];
+              if (violations.length) labels.push('security-review');
+              else labels.push('security-ok');
+              const labelDefs = [
+                ['review-bot', '1d76db', 'PR Guard 自动审查'],
+                ['security-ok', '0e8a16', '未发现敏感数据/密钥'],
+                ['security-review', 'b60205', '需要安全人工复核'],
+                ['size/S', 'c2e0c6', '小改动'],
+                ['size/M', 'fef2c0', '中等改动'],
+                ['size/L', 'f9d0c4', '大改动，建议拆分'],
+              ];
+              for (const d of labelDefs) {
+                try { await github.rest.issues.createLabel({ owner, repo, name: d[0], color: d[1], description: d[2] }); } catch (e) { /* 已存在 */ }
+              }
+              try { await github.rest.issues.addLabels({ owner, repo, issue_number: num, labels }); } catch (e) { core.warning('无法添加标签：' + e.message); }
+            
+              const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: num, per_page: 100 });
+              const mine = comments.find((c) => c.user && c.user.type === 'Bot' && c.body && c.body.includes(marker));
+              if (mine) await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body });
+              else await github.rest.issues.createComment({ owner, repo, issue_number: num, body });
+            
+              const reviewEvent = violations.length ? 'REQUEST_CHANGES' : 'COMMENT';
+              try {
+                await github.rest.pulls.createReview({ owner, repo, pull_number: num, body, event: reviewEvent });
+              } catch (e) { core.warning('无法创建 PR 审查：' + e.message); }
+            } catch (e) {
+              core.warning('PR Guard 无法写入评论/标签（可能来自 fork 的 PR）：' + e.message);
+            }
+            
+            if (violations.length) core.setFailed('PR Guard 阻塞：' + violations.join('；'));
+            else core.info('PR Guard 通过');

@@ -18,7 +18,7 @@
 - **后台六页**：仪表盘 / API 管理 / 模型管理 / 用户管理 / 聊天数据 / 系统设置。
 - **安全基线**：bcrypt、SQLite 会话、CSRF 双校验（Session + Header）、内存滑动窗口限流、SSRF 防护（内网/保留段 + DNS 全记录 + 拒绝上游重定向）、CSP 等安全头、`/api` 响应 `no-store`、启动密钥自检、改密/重置密码会话失效均已落地。
 - **本机数据现状是空壳**：数据库仅 1 个管理员，0 个 API 服务 / 模型 / 会话；想真正聊天，必须先在后台配置 API 服务并启用模型。
-- **工程化现状**：已补 `node:test` 测试套件（83 个用例，`npm test` 全绿）与 `npm run backup` 一致性备份脚本；已初始化 git 并推送到 GitHub 公开仓库（`TSS-Small-sunshine/ChenLong`），并接入 GitHub Actions CI（push/PR 跑 `npm test`）；仍缺数据库 migration 框架。
+- **工程化现状**：已补 `node:test` 测试套件（83 个用例，`npm test` 全绿）与 `npm run backup` 一致性备份脚本；已初始化 git 并推送到 GitHub 公开仓库（`TSS-Small-sunshine/ChenLong`），接入 CI / CodeQL / 依赖审查 / PR 审查机器人，main 受分支保护、所有改动走 PR（详见 [12](12-pr-workflow-and-bots.md)）；仍缺数据库 migration 框架。
 
 ## 文档索引
 
@@ -35,6 +35,7 @@
 | 09 | [现状与差距](09-status-and-gaps.md) | README 偏差审计、运行验证结果、阶段完成度、风险与下一步建议 | 负责人 / 评审 |
 | 10 | [约定与术语](10-conventions-and-glossary.md) | 术语表、常量总表、代码/接口约定、已知不一致、扩展检查清单 | 贡献者 |
 | 11 | [变更记录](11-changes.md) | 第二批改进清单、验证证据、仍未完成项、复核方法 | 负责人 / 评审 |
+| 12 | [协作与自动审查](12-pr-workflow-and-bots.md) | 分支保护规则、必需检查、PR 机器人矩阵、Fork PR 行为、AI 审查接入与操作手册 | 维护者 / 贡献者 |
 
 ## 推荐阅读路径
 
