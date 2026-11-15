@@ -5,6 +5,7 @@
 > 本章回答：**根目录 README 现在哪些说法与代码不符？项目在本机真的能跑吗？数据库里现在有什么？阶段 1–7 到底做到哪一步？上线前最该补什么？**
 > 证据口径：源码逐文件阅读（路径:行号）+ 真实 SQLite 只读查询 + 临时库/临时端口冒烟测试；未取得证据的内容标注「待核实」。
 > 与根 README 的关系：根 README.md 共 216 行，部分结论停留在“阶段 5 完成”。本章逐节核对，**以代码与运行结果为准**。
+> **【2026-11-15 第三批更新 · PostgreSQL 迁移】** 本章 §1–§7 是 **SQLite 时代**的第一/第二批快照（保留作历史证据）；本分支（feat/postgres-migration）已把运行时数据库迁移到 **PostgreSQL**，数据层/备份/部署/CI 均已切换。**当前状态以 §8、[03](03-database.md)、[08](08-config-and-ops.md)、[11-changes.md](11-changes.md) §8 为准**；§3 的 WAL/SQLite 文件数据、§7.5 的 dbSize/备份结论不再代表现状。
 
 ## 0. 结论速览
 
@@ -442,3 +443,44 @@ npm run backup           # 输出 PRAGMA quick_check = ok，产物在 data/backu
 - **阶段 6 可标记「基本完成」**，阶段 7「进行中」；本批修复使 §4.2 的 1/3/4 与 §5 的多个 P0/P1 关闭或缓解。
 - 后续优先级：DNS 重绑定（P1）→ 跨进程限流（P1）→ `.git`+CI（P1）→ dbSize 口径/会话模型沿用/忘记密码与密码策略（P2）。
 - 与第一轮口径一致：本批复核仍未对真实库执行登录/注册/聊天等写操作（所有写测试均在临时库完成）。
+---
+
+## 8. 第三批：PostgreSQL 迁移后的状态（2026-11-15）
+
+> 本节覆盖第三批（feat/postgres-migration）。§1–§7 的 SQLite 结论保留作历史，不再代表现状。
+
+### 8.1 数据层现状
+
+- 运行时：**PostgreSQL + `pg` 连接池**（`server/database/db.js`），全异步；`DB_PATH`/WAL/SQLite 文件机制已移除；better-sqlite3 仅 devDependencies（供一次性迁移脚本）；
+- 表结构：7 张表语义不变，主键改 `GENERATED ALWAYS AS IDENTITY`，`sessions.expire` 为 `BIGINT`；初始化 `await initDatabase()` 幂等；
+- 会话：`PgSessionStore`（表 `sessions`），改密/重置密码按用户失效会话（功能沿用第二批）；
+- 备份：`npm run backup` → `pg_dump` 明文 SQL `data/backups/chenlong-*.sql`；恢复 `psql -f`；**`ENCRYPTION_KEY` 仍必须与备份分开离线保管**；
+- 健康检查：`/api/health` 内部 `await ping()`；
+- 部署：compose 增加 `postgres:17` db 服务、`./pgdata` 卷、`pg_isready` healthcheck、`app depends_on db healthy`；
+- CI：test job 增加 PostgreSQL service 容器；Docker job 用 compose 起 db+app 冒烟。
+
+### 8.2 对前文风险的更新（相对 §5 与 §7.5）
+
+| 第一/二轮风险 | 迁移后状态 |
+|---|---|
+| P0-2 备份漏 WAL | 🟢 关闭（换 PG）：`pg_dump` 一致性备份；不再有 WAL 三件套问题；新风险转为备份明文/密钥保管（见 03 §10、08 §8） |
+| P1-3 多进程/单写者限制 | 🟡 部分缓解：PG 支持并发写，SQLite 单写者约束消失；但**限流仍是进程内存态**，多实例前仍要换共享存储 |
+| P2-3 dbSize 不含 WAL | 🟢 关闭：改为 `pg_database_size()`（含索引/TOAST）；口径变为"不等于业务数据量" |
+| 备份脚本/P0-2 相关文档 | 🟢 由 pg_dump 文档取代（03 §10、08 §6.4/§8、DEPLOY-DOCKER §5） |
+| 测试"随时可跑" | 🟡 变化：`npm test` 需要可达的 PostgreSQL（CI service / 本地 compose db）；本机无 PG 不可跑 |
+| SQLite 相关历史结论（§3 数据快照、§6 附录命令） | 📜 历史快照；迁移后数据以 PG 为准，本机未做 PG 实物核查（待核实） |
+
+### 8.3 新增风险与待办（PostgreSQL 专属）
+
+1. **迁移脚本已落地、尚未演练**：`scripts/migrate-sqlite-to-pg.js` 支持 `--dry-run`/`--allow-existing`、保留原始 id 并用 `setval` 对齐 IDENTITY 序列、`sessions` 不迁移；真实 PG 上的行数核对与密文解密验证待 CI/维护者执行（本机无 PG，待核实）；
+2. **会话按用户失效是全表扫描**：`SELECT sid, sess FROM sessions` 后逐条删，会话量大时性能差；建议加 `user_id` 列/索引；
+3. **PG 备份治理**：pg_dump 明文含聊天记录；备份加密、保留策略、异地/定时任务仍缺；
+4. **连接池与多实例**：`PG_POOL_MAX=10` 默认，多实例 × 池上限需小于 PG `max_connections`；长事务会占连接；
+5. **无 migration 框架**：PG 下改表风险更高（DDL 锁表），仍需版本化迁移；
+6. **本地开发前置变化**：没有 PG 时 `npm test` 不可用；本地需 `docker compose up -d db` + `DATABASE_URL`（见 08/CONTRIBUTING）；
+7. **旧 SQLite 文件与旧备份**：迁移完成后应归档（含历史备份 `.db`），避免与新 `.sql` 备份混放；历史文件含明文聊天记录，按敏感数据处理。
+
+### 8.4 文档同步
+
+本轮已同步：README（技术栈/快速开始/测试备份/已知限制/目录树/CI）、CONTRIBUTING（本地 PG 前置）、SECURITY（PG 备份/凭据）、DEPLOY-DOCKER（db 服务/pgdata/备份恢复/排错）、03（重写）、08（重写）、01/02/07/10/12（异步数据层与 CI）、11（§8 第三批记录）、知识库索引 README（索引/速查卡/快照）。历史章节中的 SQLite 表述保留但已标注为迁移前快照。
+

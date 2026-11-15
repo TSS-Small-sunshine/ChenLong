@@ -52,7 +52,7 @@ Fork / 分支 → 开 PR
 2. 分支落后会被 strict 规则拦住，点 **Update branch** 或本地 rebase 后重推；
 3. Fork PR 的 `GITHUB_TOKEN` 是只读的，PR guard 无法留言/加标签，但必需检查照常判定；如需对 Fork 也自动评论，可改用 `pull_request_target`，但那会以写权限运行不可信代码，**不推荐**；
 4. 涉及 `.github/`、`server/middleware/`、加密与 SSRF 相关文件的 PR 建议额外人工重点看（CODEOWNERS 已列出）；
-5. **CI 的数据库依赖**：`Test (Node 24)` job 启动 `postgres:17` service 容器（`pg_isready` 健康检查）并把 `DATABASE_URL` 注入测试；`Docker image` job 用 `docker compose` 起 `db + app` 两个服务做 `/api/health` 与首页冒烟（不再是单容器 `docker run`）。
+5. **CI 的数据库依赖**：`Test (Node 24)` job 启动 `postgres:17` service 容器（`pg_isready` 健康检查）并把 `DATABASE_URL`（指向 service 的 postgres 库）注入测试；`Docker image` job 用 `docker compose` 起 `db + app` 两个服务，等 `/api/health` 通过、验证首页 200，并在 app 容器内跑一次 `node scripts/backup-db.js` 确认 pg_dump 可用（不再是单容器 `docker run`）。
 
 ## 4. 可选的 AI 代码审查机器人
 

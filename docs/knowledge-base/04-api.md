@@ -92,14 +92,14 @@
 - 分页：`page`（默认 1，正整数）+ `pageSize`（默认 20，1–100；消息分页默认 50）；响应统一 `{items, total, page, pageSize}`；
 - 用户筛选：`status` ∈ `active/disabled`，`role` ∈ `user/admin`，非法枚举 → 400；
 - 模型筛选：`providerId`（正整数）、`keyword`（匹配 display_name/model_id）、`status` ∈ `enabled/disabled`；
-- 关键词搜索的 `%@@/`_` 会被转义（LIKE ... ESCAPE），可放心传特殊字符；
+- 关键词搜索的 `%` 与 `_` 会被转义（LIKE ... ESCAPE），可放心传特殊字符；
 - 时间字段一律 ISO 8601 UTC 字符串（如 `2026-11-15T07:52:39.000Z`）。
 
 ## 2. 健康检查与 CSRF
 
 | 方法 | 路径 | 鉴权 | 说明 |
 |---|---|---|---|
-| GET | /api/health | 公开 | 服务自检：`200 {"status":"ok","uptime":<秒>,"db":"connected","version":"0.1.0"}`；数据库异常 `503 {"status":"degraded","db":"disconnected",...}`。位置在限流/鉴权/CSRF 之前，适合探活 |
+| GET | /api/health | 公开 | 服务自检：内部 `await ping()` 查 PostgreSQL；`200 {"status":"ok","uptime":<秒>,"db":"connected","version":"0.1.0"}`；数据库异常 `503 {"status":"degraded","db":"disconnected",...}`。位置在限流/鉴权/CSRF 之前，适合探活 |
 | GET | /api/csrf-token | 公开 | `200 {"token":"<64 hex>"}`；session 里没有才生成，多标签页共用一个 token |
 
 ## 3. 认证 /api/auth

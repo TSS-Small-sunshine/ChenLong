@@ -236,13 +236,13 @@ await getDb().transaction(async (tx) => {
 
 1. **先备份**旧 SQLite 三件套与 `ENCRYPTION_KEY`（见 §10；密钥丢了迁移后 API Key 仍是密文垃圾）；
 2. 准备好 PostgreSQL（本地 `docker compose up -d db`，或远程实例），建库并配置 `DATABASE_URL`；
-3. 执行迁移脚本：`npm run migrate:sqlite-to-pg`（即 `node scripts/migrate-sqlite-to-pg.js`；脚本使用 devDependencies 里的 `better-sqlite3` 读取旧库，再写入 PG。**具体参数（旧库路径/目标库/是否清空目标表）以脚本 `--help` 为准——待核实**）；
-4. 校验：逐表对比行数（users/api_providers/models/conversations/messages/settings/sessions 可选），抽查 `api_key_encrypted` 是否原样搬运（密文不变，`ENCRYPTION_KEY` 不变即可解密）；
+3. 先 **dry-run 统计**再写入：`node scripts/migrate-sqlite-to-pg.js --dry-run`（参数：`--sqlite <旧库路径>`、`--database-url <连接串>`、`--dry-run`、`--allow-existing`；默认读 `DB_PATH` 或 `data/chenlong.db`）；确认行数后去掉 `--dry-run` 正式执行。脚本以 `better-sqlite3` **只读**打开旧库，写入 users/api_providers/models/conversations/messages/settings 六张表，**保留原始 id** 并用 `OVERRIDING SYSTEM VALUE` 插入、随后 `setval(pg_get_serial_sequence(...))` 对齐 IDENTITY 序列（migrate-sqlite-to-pg.js:139–152）；
+4. 校验：脚本会打印每表搬运行数；逐表 `SELECT COUNT(*)` 对比，抽查 `api_key_encrypted` 是否原样搬运（密文不变，`ENCRYPTION_KEY` 不变即可解密）。**`sessions` 不迁移**——登录会话需重新登录，这是脚本的明确取舍（migrate-sqlite-to-pg.js:8–10）；
 5. 切换 `.env`：填 `DATABASE_URL`（移除 `DB_PATH`）；
 6. 启动应用（自动完成 `initDatabase()` 幂等建表/补设置），登录后台逐项验证；迁移完成后旧 SQLite 文件归档离线保存，确认无误后才考虑删除。
 
-> 注意：迁移只搬数据、不搬 `sqlite_sequence`；PG 的 `IDENTITY` 序列需要与已迁移的最大 id 对齐（脚本应负责 `setval` 或改由脚本插入显式 id——**若脚本未处理，插入会主键冲突，务必在迁移后做一条插入冒烟**）。
-> 会话表可迁移也可不迁：迁移会话能让用户不在重启后掉线，但 `sess` 里是 JSON 字符串，跨库搬运无格式变化；建议至少迁移管理员自己的会话用于验证。
+> **安全默认**：目标库 `users` 表已有数据时脚本默认拒绝写入（退出码 2），确认要合并才加 `--allow-existing`。
+> 迁移只搬数据、不改表结构：目标库需先由 `initDatabase()`（启动应用或 `npm run init-db`）建好 7 张表；迁移后旧 SQLite 文件只读保留，确认无误后再归档。
 
 ## 10. 备份、恢复、清库（pg_dump / psql）
 

@@ -430,4 +430,4 @@ frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'
 
 * **SSE 断流无自动重连**：前端只处理 Abort 与普通网络/流错误（`chat.js:102-107, 215-223`），不做重连；后端空闲超时会发 `error` 帧（`server/services/chat-client.js:12-17,234-243`），前端按通用失败展示并保留已收内容。
 * **429 限流无专属 UI**：前端无 `RATE_LIMITED` 分支，直接 toast 服务端 message；限流为进程内存态（README:244），多实例部署时额度按实例放大。
-* **测试未覆盖前端**：`npm test` 的 83 个用例均为后端（Node 内置 `node:test`），前端仅经临时库 + 端口端到端手工验证（见根 README:214-225）。
+* **测试未覆盖前端**：`npm test` 的 83 个用例均为后端（Node 内置 `node:test`，需要 PostgreSQL），前端仅经浏览器 + 临时环境端到端手工验证（见根 README 的测试与备份章节）。

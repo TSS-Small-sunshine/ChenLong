@@ -67,7 +67,8 @@ npm start
 
 - compose 中 `app` 服务的 `DATABASE_URL` 指向 `db:5432`（容器网络内主机名 `db`），并 `depends_on: db: condition: service_healthy`；
 - 数据库数据落在宿主机 `./pgdata`（不要随手删除；删除 = 数据全丢）；
-- 端口默认只在容器网络内暴露给 app；如需宿主机直连 PG 做调试，临时映射 `127.0.0.1:5432:5432`，用完去掉。
+- compose 把 db 端口映射到 `127.0.0.1:5432`（仅本机回环，便于宿主机 `psql`/一次性迁移脚本连接）；生产可删除该映射，让 PG 只在 compose 网络内可见；
+- **compose 强制要求 `POSTGRES_PASSWORD`**（未设置时 `docker compose` 直接报错，避免用默认弱口令初始化数据库）；`POSTGRES_USER/DB` 也有默认值。
 
 ### 3.2 外部/生产 PostgreSQL
 
@@ -166,12 +167,12 @@ location / {
 
 ### 6.3 Docker 部署（推荐）
 
-- 仓库自带 `Dockerfile` + `docker-compose.yml`：多阶段构建、非 root（`node` 用户）、内置 healthcheck、日志轮转；
+- 仓库自带 `Dockerfile` + `docker-compose.yml`：多阶段构建、非 root（`node` 用户）、内置 healthcheck、日志轮转；**运行镜像内置 `postgresql-client-17`（pg_dump）**，可直接在 app 容器内执行备份；
 - compose 现在是**两个服务**：`app` + `db`（`postgres:17`，数据卷 `./pgdata`，`pg_isready` healthcheck，`app` 通过 `depends_on` 等 db 健康后再启动，`DATABASE_URL` 指向 `db:5432`）；
 - 快速：`cp .env.example .env` 填生产密钥与 `POSTGRES_PASSWORD` → `docker compose up -d --build` → `curl 127.0.0.1:3000/api/health`；
 - 容器默认只把 3000 绑到 `127.0.0.1`，由反代提供 HTTPS；反代后需 `TRUST_PROXY=1`，否则 secure Cookie/HSTS/限流 IP 都会有问题；
 - **仍建议单实例**：限流是进程内存态（数据库本身支持并发写，不再是单写者约束）；多实例前先把限流换成共享存储；
-- CI 的 `Docker image` job 会用 compose 起 `db+app` 做健康检查冒烟；
+- CI 的 `Docker image` job 会用 compose 起 `db+app` 做健康检查冒烟，并执行一次 `npm run backup` 验证容器内 `pg_dump` 可用；
 - 完整命令、备份/恢复、升级与排错见仓库根 [docs/DEPLOY-DOCKER.md](../DEPLOY-DOCKER.md)。
 
 ### 6.4 升级流程
@@ -185,9 +186,9 @@ location / {
 
 1. **先备份再迁移**：旧 `data/chenlong.db` + `-wal/-shm` 与 `ENCRYPTION_KEY` 一起归档；迁移不能替代备份；
 2. 准备 PG（compose db 或外部实例）并配置 `DATABASE_URL`；
-3. `npm run migrate:sqlite-to-pg`（`scripts/migrate-sqlite-to-pg.js`，依赖 devDependencies 的 `better-sqlite3` 读取旧库；参数以脚本 `--help` 为准——待核实）；
-4. 迁移后做**插入冒烟**验证 IDENTITY 序列正确（否则新注册会主键冲突），并逐表核对行数；
-5. 从 `.env` 删除 `DB_PATH`、补 `DATABASE_URL`；启动并逐项验证（登录、后台、聊天）；
+3. 先 dry-run：`node scripts/migrate-sqlite-to-pg.js --dry-run`（`--sqlite` 指定旧库、`--database-url` 指定目标库；默认读 `DB_PATH`/`data/chenlong.db` 与 `DATABASE_URL`）；确认每表行数后再正式执行；目标库 `users` 非空时脚本默认拒绝（需 `--allow-existing`）；
+4. 脚本会保留原始 id 并用 `setval` 对齐 IDENTITY 序列；迁移后仍建议做**插入冒烟**（注册/建会话）确认主键正常；
+5. `sessions` 不迁移（用户需重新登录）；从 `.env` 删除 `DB_PATH`、补 `DATABASE_URL`；启动并逐项验证（登录、后台、聊天）；
 6. 确认稳定运行后再归档/删除旧 SQLite 文件（删除前确认备份可用）。
 
 ## 8. 数据、备份与测试（要点，详见 03）
@@ -244,4 +245,3 @@ location / {
 - 旧 `data/chenlong.db` 与 `data/backups/` 目录是迁移前/历史产物；迁移后新备份是 `.sql`，不要混放；
 - 本机**没有 PostgreSQL**（本轮文档更新未能做 PG 实物启动核查，相关运行结论以 CI/维护者验证为准——待核实）；
 - 项目已初始化 git 并推送 GitHub 公开仓库；`.env`、PG 数据目录（`pgdata/`）、`data/backups/` 均不应提交（`.gitignore` 与 PR Guard 已覆盖 .env/备份目录/数据库文件）。
-
