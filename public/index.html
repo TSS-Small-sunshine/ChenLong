@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#65BFFF">
+  <meta name="description" content="尘龙 ChenLong —— 来自未来云端世界的 AI 小龙，陪你聊天、帮你思考、一起探索更大的世界。">
+  <title>尘龙 ChenLong · 你的小小 AI 伙伴</title>
+  <link rel="stylesheet" href="css/common.css">
+  <link rel="stylesheet" href="css/home.css">
+</head>
+<body>
+  <div class="cl-sky" aria-hidden="true">
+    <span class="cl-sky__blob cl-sky__blob--1"></span>
+    <span class="cl-sky__blob cl-sky__blob--2"></span>
+    <span class="cl-sky__blob cl-sky__blob--3"></span>
+  </div>
+
+  <header class="cl-header">
+    <div class="cl-container cl-header__inner">
+      <a class="cl-logo" href="index.html" aria-label="尘龙 ChenLong 首页">
+        <span class="cl-logo__mark" aria-hidden="true"><img class="cl-logo__img" data-site-logo alt="" hidden></span>
+        <span class="cl-logo__text" data-site-name>尘龙<em>ChenLong</em></span>
+      </a>
+      <button class="cl-burger" type="button" aria-label="打开导航菜单" aria-expanded="false" aria-controls="cl-nav"><span></span></button>
+      <nav class="cl-nav" id="cl-nav" aria-label="主导航">
+        <a class="cl-nav__link is-active" href="index.html" aria-current="page">首页</a>
+        <a class="cl-nav__link" href="#features">AI 功能</a>
+        <a class="cl-nav__link" href="#explore">探索</a>
+        <a class="cl-nav__link" href="#about">关于我们</a>
+        <div class="cl-nav__divider" aria-hidden="true"></div>
+        <div class="cl-nav__mobile-actions">
+          <a class="cl-btn cl-btn--ghost cl-btn--sm" href="login.html" data-guest-only>登录</a>
+          <a class="cl-btn cl-btn--primary cl-btn--sm" href="register.html" data-guest-only>注册</a>
+          <a class="cl-btn cl-btn--soft cl-btn--sm" href="user.html" data-auth-only hidden><span data-user-nickname>用户中心</span></a>
+          <button class="cl-btn cl-btn--ghost cl-btn--sm" type="button" data-auth-only hidden data-logout>退出登录</button>
+        </div>
+      </nav>
+      <div class="cl-header__actions">
+        <a class="cl-btn cl-btn--ghost cl-btn--sm" href="login.html" data-guest-only>登录</a>
+        <a class="cl-btn cl-btn--primary cl-btn--sm" href="register.html" data-guest-only>注册</a>
+        <a class="cl-user-chip" href="user.html" data-auth-only hidden>
+          <span class="cl-avatar cl-avatar--sm" aria-hidden="true" data-user-avatar>尘</span>
+          <span class="cl-user-chip__name" data-user-nickname>用户</span>
+        </a>
+        <button class="cl-btn cl-btn--ghost cl-btn--sm" type="button" data-auth-only hidden data-logout>退出登录</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <div class="cl-container hero__inner">
+        <div class="hero__copy">
+          <span class="hero__badge"><span class="cl-dot cl-dot--live" aria-hidden="true"></span>来自未来云端世界 · 尘龙已就位</span>
+          <h1 class="hero__title">你好，我是<span class="cl-gradient-text">尘龙</span>～<br>让 AI <span class="hero__title-mark">更懂你</span></h1>
+          <p class="hero__lead">陪你聊天 · 帮你思考 · 一起探索更大的世界。<br>把想法、烦恼和好奇心交给尘龙，它会用最温柔的方式接住。</p>
+
+          <form class="hero__composer" action="chat.html" method="get">
+            <label class="cl-sr-only" for="hero-input">和尘龙说点什么</label>
+            <textarea class="hero__input" id="hero-input" name="q" rows="2" data-autosize placeholder="想聊点什么？比如：帮我梳理一下今天的计划…"></textarea>
+            <div class="hero__composer-foot">
+              <div class="hero__suggests">
+                <button class="hero__chip" type="button" data-suggest="帮我写一封项目周报邮件" data-suggest-target="#hero-input">写一封周报邮件</button>
+                <button class="hero__chip" type="button" data-suggest="用三句话解释一下什么是大语言模型" data-suggest-target="#hero-input">三句话讲清大模型</button>
+                <button class="hero__chip" type="button" data-suggest="帮我把这段代码改得更易读" data-suggest-target="#hero-input">优化一段代码</button>
+              </div>
+              <button class="cl-btn cl-btn--primary cl-btn--lg hero__send" type="submit" data-chat-entry="#hero-input">开始聊天</button>
+            </div>
+          </form>
+          <p class="hero__note">对话、账号与后台管理均已接入真实接口，注册登录后即可开始与尘龙聊天。</p>
+        </div>
+
+        <div class="hero__visual">
+          <div class="mascot-stage" role="img" aria-label="尘龙吉祥物占位图：一只由 CSS 绘制的圆润小龙云朵">
+            <span class="mascot-halo" aria-hidden="true"></span>
+            <span class="mascot-ring" aria-hidden="true"></span>
+            <span class="mascot-spark mascot-spark--1" aria-hidden="true"></span>
+            <span class="mascot-spark mascot-spark--2" aria-hidden="true"></span>
+            <span class="mascot-spark mascot-spark--3" aria-hidden="true"></span>
+            <span class="mascot-spark mascot-spark--4" aria-hidden="true"></span>
+            <div class="mascot-cloud" aria-hidden="true">
+              <span class="mascot-horn mascot-horn--left"></span>
+              <span class="mascot-horn mascot-horn--right"></span>
+              <span class="mascot-cloud__puff mascot-cloud__puff--1"></span>
+              <span class="mascot-cloud__puff mascot-cloud__puff--2"></span>
+              <span class="mascot-cloud__puff mascot-cloud__puff--3"></span>
+              <span class="mascot-cloud__body"></span>
+              <span class="mascot-eye mascot-eye--left"></span>
+              <span class="mascot-eye mascot-eye--right"></span>
+              <span class="mascot-cheek mascot-cheek--left"></span>
+              <span class="mascot-cheek mascot-cheek--right"></span>
+              <span class="mascot-mouth"></span>
+            </div>
+            <p class="mascot-caption"><span class="cl-dot cl-dot--live" aria-hidden="true"></span><strong>尘龙</strong> 视觉占位 · 待替换原创立绘</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="features cl-section" id="features">
+      <div class="cl-container">
+        <div class="cl-section__head">
+          <span class="cl-eyebrow">AI Capabilities</span>
+          <h2 class="cl-title">四种能力，一种陪伴</h2>
+          <p class="cl-lead">从日常闲聊到复杂思考，尘龙把常用的 AI 能力收进同一个对话窗口。</p>
+        </div>
+        <div class="cap-grid">
+          <article class="cap-card">
+            <span class="cap-icon cap-icon--chat" aria-hidden="true"></span>
+            <h3 class="cap-card__title">智能对话</h3>
+            <p class="cap-card__desc">理解上下文的多轮聊天，接得住梗，也接得住你的情绪。</p>
+            <div class="cap-card__foot"><span class="cap-card__index">01</span><span class="cl-tag cl-tag--ok">已接入</span></div>
+          </article>
+          <article class="cap-card">
+            <span class="cap-icon cap-icon--idea" aria-hidden="true"></span>
+            <h3 class="cap-card__title">灵感创作</h3>
+            <p class="cap-card__desc">文案、故事、命名、方案，当思路卡住时，让尘龙递来第一块拼图。</p>
+            <div class="cap-card__foot"><span class="cap-card__index">02</span><span class="cl-tag cl-tag--ok">已接入</span></div>
+          </article>
+          <article class="cap-card">
+            <span class="cap-icon cap-icon--code" aria-hidden="true"></span>
+            <h3 class="cap-card__title">代码助手</h3>
+            <p class="cap-card__desc">解释报错、梳理逻辑、重构片段，把难啃的问题拆成可执行的小步。</p>
+            <div class="cap-card__foot"><span class="cap-card__index">03</span><span class="cl-tag cl-tag--ok">已接入</span></div>
+          </article>
+          <article class="cap-card">
+            <span class="cap-icon cap-icon--eye" aria-hidden="true"></span>
+            <h3 class="cap-card__title">多模态理解</h3>
+            <p class="cap-card__desc">看图、读文档、理解截图内容，让提问不再受限于文字。</p>
+            <div class="cap-card__foot"><span class="cap-card__index">04</span><span class="cl-tag cl-tag--off">暂未支持</span></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="character cl-section" id="explore">
+      <div class="cl-container character__inner">
+        <div class="character__stage" aria-hidden="true">
+          <div class="character__orb"></div>
+        </div>
+        <div>
+          <span class="cl-eyebrow">Meet ChenLong</span>
+          <h2 class="cl-title">来自云端世界的小龙，<br>住在你的浏览器里</h2>
+          <p class="cl-lead cl-mt-16">尘龙不是冷冰冰的搜索框。它会记得你聊过什么、在意什么，用刚刚好的语气回应你，也会在你想不出来的时候，先替你把话头接住。</p>
+          <div class="character__traits">
+            <div class="character__trait"><strong>温柔但不敷衍</strong><span>先理解你的处境，再给建议。</span></div>
+            <div class="character__trait"><strong>好奇且爱探索</strong><span>愿意陪你把一个问题追问到底。</span></div>
+            <div class="character__trait"><strong>思路清晰</strong><span>把复杂内容拆成看得懂的小块。</span></div>
+            <div class="character__trait"><strong>随时在场</strong><span>打开网页就能聊，无需安装。</span></div>
+          </div>
+          <p class="character__quote">「你今天想聊点什么呢？正经的、胡闹的、还没想清楚的，都可以。」</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="cl-section" id="about">
+      <div class="cl-container">
+        <div class="cl-section__head">
+          <span class="cl-eyebrow">Why ChenLong</span>
+          <h2 class="cl-title">为「好好聊天」而做的三件事</h2>
+        </div>
+        <div class="advantage-grid">
+          <article class="advantage">
+            <span class="advantage__no">01</span>
+            <div>
+              <h3>轻，但完整</h3>
+              <p>原生 HTML / CSS / JS 构建，打开即用；没有沉重的框架，也没有等待加载的空白屏。</p>
+            </div>
+          </article>
+          <article class="advantage">
+            <span class="advantage__no">02</span>
+            <div>
+              <h3>你的模型，你做主</h3>
+              <p>后台可接入不同厂商的 API 与模型，随时切换默认模型，不被单一服务绑定。</p>
+            </div>
+          </article>
+          <article class="advantage">
+            <span class="advantage__no">03</span>
+            <div>
+              <h3>数据留在自己手里</h3>
+              <p>会话与账号数据由自己的后端托管，可管理、可导出、可清理，心里有数。</p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="cl-section" id="faq">
+      <div class="cl-container--narrow">
+        <div class="cl-section__head">
+          <span class="cl-eyebrow">FAQ</span>
+          <h2 class="cl-title">你可能想问</h2>
+        </div>
+        <div class="faq-list">
+          <details class="faq-item" open>
+            <summary><span class="faq-item__q">Q1</span>尘龙现在可以聊天了吗？</summary>
+            <div class="faq-item__body">可以。注册登录后打开对话页就能和尘龙聊天，历史会话会保存在你的账号下；昵称和密码可以在用户中心修改。</div>
+          </details>
+          <details class="faq-item">
+            <summary><span class="faq-item__q">Q2</span>需要安装客户端吗？</summary>
+            <div class="faq-item__body">不需要。尘龙运行在浏览器里，桌面、平板、手机都能直接使用，界面会根据屏幕宽度自动调整。</div>
+          </details>
+          <details class="faq-item">
+            <summary><span class="faq-item__q">Q3</span>支持哪些模型？</summary>
+            <div class="faq-item__body">后台的「API 管理」与「模型管理」支持登记多个服务与模型，并把其中一个设为默认模型。具体可用的模型取决于你在后台接入的服务。</div>
+          </details>
+          <details class="faq-item">
+            <summary><span class="faq-item__q">Q4</span>聊天记录会被保存吗？</summary>
+            <div class="faq-item__body">会话记录保存在本站自己的后端数据库中，仅用于给你展示历史对话。你可以在对话页删除单个会话，也可以在用户中心退出登录。</div>
+          </details>
+          <details class="faq-item">
+            <summary><span class="faq-item__q">Q5</span>吉祥物「尘龙」的形象在哪里？</summary>
+            <div class="faq-item__body">原创立绘仍在制作中。当前页面使用纯 CSS 绘制的云朵光晕作为占位，等原创图就位后会替换为正式形象，不使用任何外部图片或表情符号顶替。</div>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta">
+      <div class="cl-container">
+        <div class="cta__card">
+          <h2>把第一句话，说给尘龙听</h2>
+          <p>创建账号，保存你的每一段对话与灵感。</p>
+          <a class="cl-btn cl-btn--lg" href="register.html">免费注册</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="cl-footer">
+    <div class="cl-container">
+      <div class="cl-footer__grid">
+        <div class="cl-footer__brand">
+          <a class="cl-logo" href="index.html" aria-label="尘龙 ChenLong 首页">
+            <span class="cl-logo__mark" aria-hidden="true"><img class="cl-logo__img" data-site-logo alt="" hidden></span>
+            <span class="cl-logo__text" data-site-name>尘龙<em>ChenLong</em></span>
+          </a>
+          <p>来自未来云端世界的可爱 AI 小龙。陪你聊天、帮你思考，一起探索更大的世界。</p>
+          <p class="cl-mt-16"><span class="cl-tag cl-tag--ok">前后端均已接入</span></p>
+        </div>
+        <div class="cl-footer__col">
+          <h4>产品</h4>
+          <ul>
+            <li><a href="#features">AI 功能</a></li>
+            <li><a href="chat.html">开始聊天</a></li>
+            <li><a href="user.html">用户中心</a></li>
+          </ul>
+        </div>
+        <div class="cl-footer__col">
+          <h4>账号</h4>
+          <ul>
+            <li><a href="login.html">登录</a></li>
+            <li><a href="register.html">注册</a></li>
+            <li><a href="admin/admin.html">管理后台</a></li>
+          </ul>
+        </div>
+        <div class="cl-footer__col">
+          <h4>关于</h4>
+          <ul>
+            <li><a href="#explore">认识尘龙</a></li>
+            <li><a href="#faq">常见问题</a></li>
+            <li><a href="#about">产品理念</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="cl-footer__bottom">
+        <span>© 2026 <span data-site-name>尘龙 ChenLong</span> · <span data-site-subtitle>Your Little AI Companion</span></span>
+        <span>账号系统已接入 · AI 对话已上线</span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="js/app.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/guard.js"></script>
+</body>
+</html>

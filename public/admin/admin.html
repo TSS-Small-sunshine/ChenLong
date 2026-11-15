@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#65BFFF">
+  <meta name="description" content="尘龙 ChenLong 后台仪表盘：用户、会话、消息与已接入服务概览。">
+  <title>仪表盘 · 尘龙 ChenLong 后台</title>
+  <link rel="stylesheet" href="../css/common.css">
+  <link rel="stylesheet" href="../css/admin.css">
+</head>
+<body data-guard="admin">
+  <div class="admin-shell">
+    <aside class="admin-nav" id="admin-nav" aria-label="后台导航">
+      <a class="admin-nav__brand" href="admin.html" aria-label="尘龙 ChenLong 后台首页">
+        <span class="cl-logo">
+          <span class="cl-logo__mark" aria-hidden="true"></span>
+          <span class="cl-logo__text">尘龙<em>ChenLong</em></span>
+        </span>
+        <span class="admin-nav__badge">ADMIN</span>
+      </a>
+
+      <p class="admin-nav__group">概览</p>
+      <a class="admin-nav__link is-active" href="admin.html" aria-current="page"><span class="admin-nav__icon admin-nav__icon--dash" aria-hidden="true"></span>仪表盘</a>
+
+      <p class="admin-nav__group">服务</p>
+      <a class="admin-nav__link" href="api.html"><span class="admin-nav__icon admin-nav__icon--api" aria-hidden="true"></span>API 管理</a>
+      <a class="admin-nav__link" href="models.html"><span class="admin-nav__icon admin-nav__icon--model" aria-hidden="true"></span>模型管理</a>
+
+      <p class="admin-nav__group">运营</p>
+      <a class="admin-nav__link" href="users.html"><span class="admin-nav__icon admin-nav__icon--user" aria-hidden="true"></span>用户管理</a>
+      <a class="admin-nav__link" href="data.html"><span class="admin-nav__icon admin-nav__icon--data" aria-hidden="true"></span>聊天数据</a>
+
+      <p class="admin-nav__group">系统</p>
+      <a class="admin-nav__link" href="settings.html"><span class="admin-nav__icon admin-nav__icon--setting" aria-hidden="true"></span>系统设置</a>
+
+      <div class="admin-nav__foot">
+        <a class="admin-nav__link" href="../index.html"><span class="admin-nav__icon admin-nav__icon--back" aria-hidden="true"></span>返回前台</a>
+        <button class="cl-btn cl-btn--ghost cl-btn--sm" type="button" data-logout>退出登录</button>
+        <div class="admin-nav__user">
+          <span class="cl-avatar cl-avatar--sm" aria-hidden="true" data-user-avatar>尘</span>
+          <div class="admin-nav__user-meta">
+            <div class="admin-nav__user-name" data-user-nickname>未登录管理员</div>
+            <div class="admin-nav__user-role" data-user-role>管理员</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+    <div class="admin-main">
+      <header class="admin-topbar">
+        <button class="admin-topbar__toggle" type="button" data-admin-toggle aria-label="打开后台导航" aria-expanded="false" aria-controls="admin-nav"><span aria-hidden="true"></span></button>
+        <nav class="admin-topbar__crumb" aria-label="面包屑">
+          <a href="admin.html">后台</a>
+          <span aria-hidden="true">/</span>
+          <strong>仪表盘</strong>
+        </nav>
+        <div class="admin-topbar__right">
+          <a class="cl-btn cl-btn--ghost cl-btn--xs" href="../index.html">返回前台</a>
+          <span class="cl-avatar cl-avatar--sm" aria-hidden="true" data-user-avatar>尘</span>
+        </div>
+      </header>
+      <main class="admin-content">
+        <header class="admin-page-head">
+          <div class="admin-page-head__text">
+            <h1>仪表盘</h1>
+            <p>用户、会话与消息的总览，数据来自后台统计接口。</p>
+          </div>
+          <div class="admin-page-head__actions">
+            <button class="cl-btn cl-btn--ghost" type="button" data-stats-refresh>刷新数据</button>
+            <a class="cl-btn cl-btn--primary" href="api.html">接入 API</a>
+          </div>
+        </header>
+
+        <section class="stat-grid" aria-label="核心指标">
+          <article class="stat-card">
+            <div class="stat-card__top"><span class="stat-card__label">用户总数</span><span class="stat-card__icon" aria-hidden="true"></span></div>
+            <div class="stat-card__value" data-stat="userCount">—</div>
+            <div class="stat-card__foot"><span class="cl-dot cl-dot--idle" aria-hidden="true"></span><span data-stat-foot="userCount">正在读取</span></div>
+          </article>
+          <article class="stat-card">
+            <div class="stat-card__top"><span class="stat-card__label">会话总数</span><span class="stat-card__icon" aria-hidden="true"></span></div>
+            <div class="stat-card__value" data-stat="conversationCount">—</div>
+            <div class="stat-card__foot"><span class="cl-dot cl-dot--idle" aria-hidden="true"></span><span data-stat-foot="conversationCount">正在读取</span></div>
+          </article>
+          <article class="stat-card">
+            <div class="stat-card__top"><span class="stat-card__label">消息总数</span><span class="stat-card__icon" aria-hidden="true"></span></div>
+            <div class="stat-card__value" data-stat="messageCount">—</div>
+            <div class="stat-card__foot"><span class="cl-dot cl-dot--idle" aria-hidden="true"></span><span data-stat-foot="messageCount">正在读取</span></div>
+          </article>
+          <article class="stat-card">
+            <div class="stat-card__top"><span class="stat-card__label">已接入 API</span><span class="stat-card__icon" aria-hidden="true"></span></div>
+            <div class="stat-card__value" data-stat="providerCount">—</div>
+            <div class="stat-card__foot"><span class="cl-dot cl-dot--idle" aria-hidden="true"></span><span data-stat-foot="providerCount">正在读取</span></div>
+          </article>
+        </section>
+
+        <section class="cl-panel cl-mt-24">
+          <div class="cl-panel__head">
+            <div>
+              <h2 class="cl-card__title">系统状态</h2>
+              <p class="cl-card__sub">服务版本、运行时长与数据库大小</p>
+            </div>
+            <span class="cl-tag cl-tag--off" data-sys-badge>加载中…</span>
+          </div>
+          <div class="cl-panel__body">
+            <div class="status-list">
+              <div class="status-item">
+                <div>
+                  <div class="status-item__name">服务版本</div>
+                  <div class="status-item__desc">当前运行的后台版本号</div>
+                </div>
+                <span class="status-item__state" data-sys-version>—</span>
+              </div>
+              <div class="status-item">
+                <div>
+                  <div class="status-item__name">Node 版本</div>
+                  <div class="status-item__desc">运行时环境版本</div>
+                </div>
+                <span class="status-item__state" data-sys-node>—</span>
+              </div>
+              <div class="status-item">
+                <div>
+                  <div class="status-item__name">运行时长</div>
+                  <div class="status-item__desc">服务本次启动至今</div>
+                </div>
+                <span class="status-item__state" data-sys-uptime>—</span>
+              </div>
+              <div class="status-item">
+                <div>
+                  <div class="status-item__name">数据库大小</div>
+                  <div class="status-item__desc">用户、会话、消息占用的存储空间</div>
+                </div>
+                <span class="status-item__state" data-sys-dbsize>—</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div class="admin-grid-2 admin-grid-2--even">
+          <section class="cl-panel">
+            <div class="cl-panel__head">
+              <div>
+                <h2 class="cl-card__title">最近添加 API</h2>
+                <p class="cl-card__sub">最近 5 个接入的服务</p>
+              </div>
+              <a class="cl-btn cl-btn--soft cl-btn--xs" href="api.html">管理</a>
+            </div>
+            <div class="cl-panel__body" data-recent-providers>
+              <div class="cl-empty cl-empty--compact">
+                <div class="cl-empty__art" aria-hidden="true"></div>
+                <h3 class="cl-empty__title">正在读取服务列表</h3>
+                <p class="cl-empty__desc">稍候，正在向后台请求最近的 API 服务。</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="cl-panel">
+            <div class="cl-panel__head">
+              <div>
+                <h2 class="cl-card__title">最近使用模型</h2>
+                <p class="cl-card__sub">按最近一次会话活动排序</p>
+              </div>
+              <a class="cl-btn cl-btn--soft cl-btn--xs" href="models.html">管理</a>
+            </div>
+            <div class="cl-panel__body" data-recent-models>
+              <div class="cl-empty cl-empty--compact">
+                <div class="cl-empty__art" aria-hidden="true"></div>
+                <h3 class="cl-empty__title">正在读取模型使用记录</h3>
+                <p class="cl-empty__desc">稍候，正在向后台请求最近使用的模型。</p>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <p class="admin-hint"><span data-stats-updated>正在读取后台统计…</span></p>
+      </main>
+    </div>
+  </div>
+
+  <script src="../js/app.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/guard.js"></script>
+  <script src="../js/admin.js"></script>
+  <script src="../js/admin-dashboard.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#65BFFF">
+  <meta name="description" content="尘龙 ChenLong 后台：管理第三方 API 服务、密钥与模型拉取。">
+  <title>API 管理 · 尘龙 ChenLong 后台</title>
+  <link rel="stylesheet" href="../css/common.css">
+  <link rel="stylesheet" href="../css/admin.css">
+</head>
+<body data-guard="admin">
+  <div class="admin-shell">
+    <aside class="admin-nav" id="admin-nav" aria-label="后台导航">
+      <a class="admin-nav__brand" href="admin.html" aria-label="尘龙 ChenLong 后台首页">
+        <span class="cl-logo">
+          <span class="cl-logo__mark" aria-hidden="true"></span>
+          <span class="cl-logo__text">尘龙<em>ChenLong</em></span>
+        </span>
+        <span class="admin-nav__badge">ADMIN</span>
+      </a>
+
+      <p class="admin-nav__group">概览</p>
+      <a class="admin-nav__link" href="admin.html"><span class="admin-nav__icon admin-nav__icon--dash" aria-hidden="true"></span>仪表盘</a>
+
+      <p class="admin-nav__group">服务</p>
+      <a class="admin-nav__link is-active" href="api.html" aria-current="page"><span class="admin-nav__icon admin-nav__icon--api" aria-hidden="true"></span>API 管理</a>
+      <a class="admin-nav__link" href="models.html"><span class="admin-nav__icon admin-nav__icon--model" aria-hidden="true"></span>模型管理</a>
+
+      <p class="admin-nav__group">运营</p>
+      <a class="admin-nav__link" href="users.html"><span class="admin-nav__icon admin-nav__icon--user" aria-hidden="true"></span>用户管理</a>
+      <a class="admin-nav__link" href="data.html"><span class="admin-nav__icon admin-nav__icon--data" aria-hidden="true"></span>聊天数据</a>
+
+      <p class="admin-nav__group">系统</p>
+      <a class="admin-nav__link" href="settings.html"><span class="admin-nav__icon admin-nav__icon--setting" aria-hidden="true"></span>系统设置</a>
+
+      <div class="admin-nav__foot">
+        <a class="admin-nav__link" href="../index.html"><span class="admin-nav__icon admin-nav__icon--back" aria-hidden="true"></span>返回前台</a>
+        <button class="cl-btn cl-btn--ghost cl-btn--sm" type="button" data-logout>退出登录</button>
+        <div class="admin-nav__user">
+          <span class="cl-avatar cl-avatar--sm" aria-hidden="true" data-user-avatar>尘</span>
+          <div class="admin-nav__user-meta">
+            <div class="admin-nav__user-name" data-user-nickname>未登录管理员</div>
+            <div class="admin-nav__user-role" data-user-role>管理员</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+    <div class="admin-main">
+      <header class="admin-topbar">
+        <button class="admin-topbar__toggle" type="button" data-admin-toggle aria-label="打开后台导航" aria-expanded="false" aria-controls="admin-nav"><span aria-hidden="true"></span></button>
+        <nav class="admin-topbar__crumb" aria-label="面包屑">
+          <a href="admin.html">后台</a>
+          <span aria-hidden="true">/</span>
+          <strong>API 管理</strong>
+        </nav>
+        <div class="admin-topbar__right">
+          <a class="cl-btn cl-btn--ghost cl-btn--xs" href="../index.html">返回前台</a>
+          <span class="cl-avatar cl-avatar--sm" aria-hidden="true" data-user-avatar>尘</span>
+        </div>
+      </header>
+      <main class="admin-content">
+        <header class="admin-page-head">
+          <div class="admin-page-head__text">
+            <h1>API 管理</h1>
+            <p>添加 OpenAI 兼容或其他类型的模型服务，供聊天与模型管理使用。</p>
+          </div>
+          <div class="admin-page-head__actions">
+            <button class="cl-btn cl-btn--ghost" type="button" data-api-refresh>刷新列表</button>
+            <a class="cl-btn cl-btn--primary" href="#api-form">添加 API</a>
+          </div>
+        </header>
+
+        <section class="cl-panel">
+          <div class="cl-panel__head">
+            <div>
+              <h2 class="cl-card__title">API 服务列表</h2>
+              <p class="cl-card__sub">密钥仅在后端保存，前端不会展示明文</p>
+            </div>
+            <span class="cl-tag cl-tag--pending" data-api-count>0 个服务</span>
+          </div>
+          <div class="cl-panel__body">
+            <div class="cl-table-wrap">
+              <table class="cl-table">
+                <thead>
+                  <tr><th scope="col">服务名称</th><th scope="col">Base URL</th><th scope="col">类型</th><th scope="col">状态</th><th scope="col">模型数</th><th scope="col">操作</th></tr>
+                </thead>
+                <tbody data-api-rows>
+                  <tr class="cl-table__empty">
+                    <td colspan="6">
+                      <div class="cl-empty cl-empty--compact">
+                        <div class="cl-empty__art" aria-hidden="true"></div>
+                        <h3 class="cl-empty__title">还没有添加 API 服务</h3>
+                        <p class="cl-empty__desc">添加一个服务后，就可以拉取模型并在聊天中使用了。</p>
+                        <div class="cl-empty__actions"><a class="cl-btn cl-btn--primary cl-btn--sm" href="#api-form">去添加</a></div>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="admin-hint"><span>「刷新模型」只新增服务上尚未收录的模型，新模型默认禁用；Base URL 需以 http 或 https 前缀开头。</span></p>
+          </div>
+        </section>
+
+        <section class="cl-panel cl-mt-24" id="api-form">
+          <div class="cl-panel__head">
+            <div>
+              <h2 class="cl-card__title" data-api-form-title>添加 API</h2>
+              <p class="cl-card__sub">填写服务信息，保存后可测试连接并刷新模型</p>
+            </div>
+            <span class="cl-tag cl-tag--pending" data-api-mode>新增</span>
+          </div>
+          <div class="cl-panel__body">
+            <form class="cl-form" data-api-form novalidate>
+              <p class="cl-hint admin-form-status" data-api-form-error role="alert" hidden></p>
+              <div class="form-grid-2">
+                <div class="cl-field">
+                  <label class="cl-label" for="api-name">服务名称<span class="cl-req" aria-hidden="true">*</span></label>
+                  <input class="cl-input" id="api-name" name="name" type="text" placeholder="例如：OpenAI 主账号" autocomplete="off">
+                  <p class="cl-hint">用于在模型管理中区分来源</p>
+                </div>
+                <div class="cl-field">
+                  <label class="cl-label" for="api-type">API 类型<span class="cl-req" aria-hidden="true">*</span></label>
+                  <select class="cl-select" id="api-type" name="apiType">
+                    <option value="openai">OpenAI 兼容</option>
+                    <option value="anthropic">Anthropic</option>
+                    <option value="gemini">Google Gemini</option>
+                    <option value="custom">自定义</option>
+                  </select>
+                  <p class="cl-hint">决定请求格式与模型拉取方式</p>
+                </div>
+              </div>
+
+              <div class="cl-field">
+                <label class="cl-label" for="api-base">Base URL<span class="cl-req" aria-hidden="true">*</span></label>
+                <input class="cl-input" id="api-base" name="baseUrl" type="text" placeholder="api.example.com/v1" autocomplete="off" spellcheck="false">
+                <p class="cl-hint">需包含 http 或 https 前缀；不含具体接口路径，仅填写到 /v1 之类的前缀</p>
+              </div>
+
+              <div class="cl-field">
+                <label class="cl-label" for="api-key">API Key<span class="cl-req" aria-hidden="true">*</span></label>
+                <div class="cl-input-affix">
+                  <input class="cl-input" id="api-key" name="apiKey" type="password" placeholder="粘贴服务提供的密钥" autocomplete="off">
+                  <button class="cl-pw-toggle" type="button" data-toggle-password="#api-key" aria-label="显示密钥" aria-pressed="false"></button>
+                </div>
+                <p class="cl-hint" data-api-key-hint>仅提交给后端保存，前端不做本地存储</p>
+              </div>
+
+              <div class="cl-field">
+                <label class="cl-label" for="api-note">备注</label>
+                <textarea class="cl-textarea" id="api-note" name="description" rows="3" placeholder="可选：额度、用途或其他说明"></textarea>
+              </div>
+
+              <label class="cl-switch" for="api-enabled">
+                <input id="api-enabled" name="enabled" type="checkbox" checked>
+                <span class="cl-switch__track" aria-hidden="true"></span>
+                <span>启用该服务</span>
+              </label>
+
+              <p class="cl-hint" data-api-current></p>
+
+              <div class="cl-row cl-row--wrap cl-mt-16">
+                <button class="cl-btn cl-btn--primary" type="submit">保存</button>
+                <button class="cl-btn cl-btn--ghost" type="button" data-api-test>测试连接</button>
+                <button class="cl-btn cl-btn--soft" type="button" data-api-refresh-models>刷新模型</button>
+                <button class="cl-btn cl-btn--ghost" type="button" data-api-cancel hidden>取消编辑</button>
+              </div>
+            </form>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script src="../js/app.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/guard.js"></script>
+  <script src="../js/admin.js"></script>
+  <script src="../js/api.js"></script>
+</body>
+</html>

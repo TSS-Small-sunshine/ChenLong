@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#65BFFF">
+  <meta name="description" content="尘龙 ChenLong 对话页 —— 与 AI 小龙聊天。">
+  <title>对话 · 尘龙 ChenLong</title>
+  <link rel="stylesheet" href="css/common.css">
+  <link rel="stylesheet" href="css/chat.css">
+</head>
+<body>
+  <div class="chat-app">
+    <aside class="chat-sidebar" id="chat-sidebar" aria-label="会话栏">
+      <div class="chat-sidebar__brand">
+        <a class="cl-logo" href="index.html" aria-label="尘龙 ChenLong 首页">
+          <span class="cl-logo__mark" aria-hidden="true"><img class="cl-logo__img" data-site-logo alt="" hidden></span>
+          <span class="cl-logo__text" data-site-name>尘龙<em>ChenLong</em></span>
+        </a>
+        <button class="chat-sidebar__close" type="button" aria-label="关闭会话栏" data-chat-sidebar-close></button>
+      </div>
+
+      <button class="cl-btn cl-btn--primary chat-sidebar__new" type="button" data-chat-new>新建对话</button>
+
+      <div class="cl-search">
+        <label class="cl-sr-only" for="chat-search">搜索历史会话</label>
+        <input class="cl-input" id="chat-search" type="search" placeholder="搜索历史会话" autocomplete="off">
+      </div>
+
+      <div class="chat-history">
+        <div class="chat-history__label"><span>历史会话</span><span class="cl-tag cl-tag--off" id="chat-history-count">0 个会话</span></div>
+        <div class="chat-history__list" id="chat-history-list"></div>
+        <div class="chat-history__empty" id="chat-history-empty">
+          <p>还没有历史对话</p>
+          <span data-chat-history-note>发送第一条消息后，会话会自动出现在这里。</span>
+        </div>
+        <div class="chat-history__empty" id="chat-history-noresult" hidden>
+          <p>没有匹配的会话</p>
+          <span>换个关键词试试，或者点「新建对话」。</span>
+        </div>
+      </div>
+
+      <div class="chat-sidebar__foot">
+        <a class="chat-user" href="user.html">
+          <span class="cl-avatar" aria-hidden="true" data-user-avatar>尘</span>
+          <span class="chat-user__meta">
+            <span class="chat-user__name" data-user-nickname>未登录访客</span>
+            <span class="chat-user__role" data-user-role>前往用户中心</span>
+          </span>
+        </a>
+        <div class="chat-sidebar__links">
+          <a class="cl-btn cl-btn--ghost cl-btn--sm" href="user.html">设置</a>
+          <a class="cl-btn cl-btn--ghost cl-btn--sm" href="index.html">返回首页</a>
+        </div>
+      </div>
+    </aside>
+
+    <main class="chat-main">
+      <header class="chat-topbar">
+        <button class="chat-topbar__toggle" type="button" aria-label="打开会话栏" aria-expanded="false" aria-controls="chat-sidebar" data-chat-sidebar-toggle><span></span></button>
+        <div>
+          <div class="chat-topbar__title">新的对话</div>
+          <div class="chat-topbar__sub">尘龙 · 随时在这里</div>
+        </div>
+        <div class="chat-topbar__right">
+          <a class="cl-btn cl-btn--ghost cl-btn--sm" href="login.html?redirect=%2Fchat.html" data-guest-only>登录</a>
+          <a class="cl-btn cl-btn--primary cl-btn--sm" href="register.html" data-guest-only>注册</a>
+          <a class="cl-user-chip" href="user.html" data-auth-only hidden>
+            <span class="cl-avatar cl-avatar--sm" aria-hidden="true" data-user-avatar>尘</span>
+            <span class="cl-user-chip__name" data-user-nickname>用户</span>
+          </a>
+          <button class="cl-btn cl-btn--ghost cl-btn--sm" type="button" data-auth-only hidden data-logout>退出登录</button>
+          <a class="cl-btn cl-btn--ghost cl-btn--sm" href="index.html" data-chat-back>返回首页</a>
+        </div>
+      </header>
+
+      <section class="chat-messages" id="chat-messages" aria-label="消息区" aria-live="polite">
+        <div class="chat-messages__inner">
+          <div class="chat-thread" id="chat-thread"></div>
+          <div class="chat-empty">
+            <div class="chat-welcome">
+              <div class="chat-welcome__avatar" aria-hidden="true"></div>
+              <h2>你好呀，我是尘龙！今天有什么想和我聊聊的？</h2>
+              <p>现在还没有任何消息。发送第一句话，或者先从下面的小问题开始。</p>
+              <div class="chat-welcome__chips">
+                <button type="button" data-suggest="帮我把今天要做的事排个优先级" data-suggest-target="#chat-input">帮我排今日优先级</button>
+                <button type="button" data-suggest="用简单的话解释一下这段报错" data-suggest-target="#chat-input">解释一段报错</button>
+                <button type="button" data-suggest="陪我随便聊聊，今天有点累" data-suggest-target="#chat-input">随便聊聊</button>
+                <button type="button" data-suggest="帮我给这个小项目起个名字" data-suggest-target="#chat-input">帮我起个名字</button>
+              </div>
+              <p class="chat-welcome__foot">尘龙会记住当前会话的上下文；换一个会话就是新的话题。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <form class="chat-composer" data-chat-form>
+        <div class="chat-composer__box">
+          <label class="cl-sr-only" for="chat-input">输入消息</label>
+          <textarea id="chat-input" name="content" rows="2" data-autosize placeholder="和尘龙说点什么…"></textarea>
+          <div class="chat-composer__bar">
+            <label class="cl-sr-only" for="chat-model">选择模型</label>
+            <select class="chat-composer__select" id="chat-model" name="model">
+              <option value="">模型加载中…</option>
+            </select>
+            <button class="chat-stop" type="button" disabled>停止生成</button>
+            <button class="chat-send" type="submit" aria-label="发送消息"></button>
+          </div>
+        </div>
+        <p class="chat-composer__hint">尘龙也可能会犯错，重要信息请自行核实 · 生成中可随时停止</p>
+      </form>
+    </main>
+
+    <aside class="chat-aside" aria-label="会话信息">
+      <p class="chat-aside__title">会话信息</p>
+      <dl class="chat-info">
+        <div class="chat-info__row"><dt>当前模型</dt><dd data-chat-info="model">—</dd></div>
+        <div class="chat-info__row"><dt>消息数</dt><dd data-chat-info="count">0</dd></div>
+        <div class="chat-info__row"><dt>创建时间</dt><dd data-chat-info="created">—</dd></div>
+        <div class="chat-info__row"><dt>连接状态</dt><dd><span class="cl-dot cl-dot--idle" aria-hidden="true" data-chat-dot></span> <span data-chat-info="status">未连接</span></dd></div>
+      </dl>
+      <div class="chat-tips">
+        <strong>小提示</strong>
+        会话栏在窄屏会收进抽屉，点左上角的按钮即可展开；生成过程中可以随时点「停止生成」，已经收到的内容会保留。
+      </div>
+      <div class="chat-tips">
+        <strong>会话管理</strong>
+        对话会自动保存在你的账号下；在会话栏可以重命名或删除会话，删除后消息无法恢复。
+      </div>
+      <p class="chat-aside__foot"><span data-site-name>尘龙 ChenLong</span> · <span data-site-subtitle>Your Little AI Companion</span></p>
+    </aside>
+
+    <div class="chat-backdrop" data-chat-sidebar-backdrop></div>
+  </div>
+
+  <script src="js/app.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/guard.js"></script>
+  <script src="js/chat.js"></script>
+</body>
+</html>

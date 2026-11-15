@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#65BFFF">
+  <meta name="description" content="尘龙 ChenLong 用户中心：查看资料、修改昵称与密码、管理历史对话。">
+  <title>用户中心 · 尘龙 ChenLong</title>
+  <link rel="stylesheet" href="css/common.css">
+</head>
+<body data-guard="auth">
+  <div class="cl-sky" aria-hidden="true">
+    <span class="cl-sky__blob cl-sky__blob--1"></span>
+    <span class="cl-sky__blob cl-sky__blob--2"></span>
+    <span class="cl-sky__blob cl-sky__blob--3"></span>
+  </div>
+
+  <header class="cl-header">
+    <div class="cl-container cl-header__inner">
+      <a class="cl-logo" href="index.html" aria-label="尘龙 ChenLong 首页">
+        <span class="cl-logo__mark" aria-hidden="true"><img class="cl-logo__img" data-site-logo alt="" hidden></span>
+        <span class="cl-logo__text">尘龙<em>ChenLong</em></span>
+      </a>
+
+      <button class="cl-burger" type="button" aria-label="打开导航菜单" aria-expanded="false" aria-controls="cl-nav">
+        <span aria-hidden="true"></span>
+      </button>
+
+      <nav class="cl-nav" id="cl-nav" aria-label="主导航">
+        <a class="cl-nav__link" href="index.html">首页</a>
+        <a class="cl-nav__link" href="index.html#capabilities">AI 功能</a>
+        <a class="cl-nav__link" href="index.html#explore">探索</a>
+        <a class="cl-nav__link" href="index.html#about">关于我们</a>
+        <span class="cl-nav__divider" aria-hidden="true"></span>
+        <div class="cl-nav__mobile-actions">
+          <a class="cl-btn cl-btn--ghost cl-btn--sm" href="login.html" data-guest-only>登录</a>
+          <a class="cl-btn cl-btn--primary cl-btn--sm" href="register.html" data-guest-only>注册</a>
+          <a class="cl-btn cl-btn--soft cl-btn--sm" href="user.html" data-auth-only hidden><span data-user-nickname>用户中心</span></a>
+          <button class="cl-btn cl-btn--ghost cl-btn--sm" type="button" data-auth-only hidden data-logout>退出登录</button>
+        </div>
+      </nav>
+
+      <div class="cl-header__actions">
+        <a class="cl-btn cl-btn--ghost cl-btn--sm" href="login.html" data-guest-only>登录</a>
+        <a class="cl-btn cl-btn--primary cl-btn--sm" href="register.html" data-guest-only>注册</a>
+        <a class="cl-user-chip" href="user.html" data-auth-only hidden>
+          <span class="cl-avatar cl-avatar--sm" aria-hidden="true" data-user-avatar>尘</span>
+          <span class="cl-user-chip__name" data-user-nickname>用户</span>
+        </a>
+        <button class="cl-btn cl-btn--ghost cl-btn--sm" type="button" data-auth-only hidden data-logout>退出登录</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="cl-section">
+    <div class="cl-container">
+      <header class="account-hero">
+        <span class="cl-avatar cl-avatar--lg" aria-hidden="true" data-user-avatar>尘</span>
+        <div class="account-hero__text">
+          <h1 data-user-nickname>加载中…</h1>
+          <p>@<span data-user-username>—</span> · 注册于 <span data-user-created>—</span> <span class="cl-tag" data-user-role>—</span></p>
+        </div>
+        <div class="account-hero__actions">
+          <button class="cl-btn cl-btn--danger-ghost" type="button" data-logout>退出登录</button>
+        </div>
+      </header>
+
+      <div class="account-grid">
+        <div class="cl-stack">
+          <section class="cl-panel">
+            <div class="cl-panel__head">
+              <div>
+                <h2 class="cl-card__title">资料卡</h2>
+                <p class="cl-card__sub">账号基本信息</p>
+              </div>
+              <span class="cl-tag cl-tag--ok">已登录</span>
+            </div>
+            <div class="cl-panel__body">
+              <dl class="account-meta">
+                <div><dt>用户 ID</dt><dd data-user-id>—</dd></div>
+                <div><dt>用户名</dt><dd data-user-username>—</dd></div>
+                <div><dt>昵称</dt><dd data-user-nickname>—</dd></div>
+                <div><dt>角色</dt><dd data-user-role>—</dd></div>
+                <div><dt>注册时间</dt><dd data-user-created>—</dd></div>
+              </dl>
+              <p class="cl-small cl-muted">资料来自 <code>GET /api/auth/me</code>，修改昵称后即时刷新。</p>
+            </div>
+          </section>
+
+          <section class="cl-panel">
+            <div class="cl-panel__head">
+              <div>
+                <h2 class="cl-card__title">修改昵称</h2>
+                <p class="cl-card__sub">昵称会展示在对话与用户中心</p>
+              </div>
+            </div>
+            <div class="cl-panel__body">
+              <form class="cl-form" data-profile-form novalidate>
+                <div class="cl-field">
+                  <label class="cl-label" for="nickname">新昵称<span class="cl-req" aria-hidden="true">*</span></label>
+                  <input class="cl-input" id="nickname" name="nickname" type="text" autocomplete="nickname" placeholder="1–20 个字符">
+                  <p class="cl-hint" id="profile-nickname-hint">当前昵称：—</p>
+                </div>
+                <div class="account-form-actions">
+                  <button class="cl-btn cl-btn--primary" type="submit">保存昵称</button>
+                </div>
+              </form>
+            </div>
+          </section>
+
+          <section class="cl-panel">
+            <div class="cl-panel__head">
+              <div>
+                <h2 class="cl-card__title">修改密码</h2>
+                <p class="cl-card__sub">修改后请牢记新密码</p>
+              </div>
+            </div>
+            <div class="cl-panel__body">
+              <form class="cl-form" data-password-form novalidate>
+                <div class="cl-field">
+                  <label class="cl-label" for="current-password">当前密码<span class="cl-req" aria-hidden="true">*</span></label>
+                  <div class="cl-input-affix">
+                    <input class="cl-input" id="current-password" name="password" type="password" autocomplete="current-password" placeholder="请输入当前密码">
+                    <button class="cl-pw-toggle" type="button" data-toggle-password="#current-password" aria-label="显示密码" aria-pressed="false"></button>
+                  </div>
+                  <p class="cl-hint">6–64 位字符</p>
+                </div>
+                <div class="cl-field">
+                  <label class="cl-label" for="new-password">新密码<span class="cl-req" aria-hidden="true">*</span></label>
+                  <div class="cl-input-affix">
+                    <input class="cl-input" id="new-password" name="newPassword" type="password" autocomplete="new-password" placeholder="至少 6 位字符">
+                    <button class="cl-pw-toggle" type="button" data-toggle-password="#new-password" aria-label="显示密码" aria-pressed="false"></button>
+                  </div>
+                  <p class="cl-hint">建议混合字母与数字</p>
+                </div>
+                <div class="cl-field">
+                  <label class="cl-label" for="confirm-password">确认新密码<span class="cl-req" aria-hidden="true">*</span></label>
+                  <input class="cl-input" id="confirm-password" name="confirmPassword" type="password" autocomplete="new-password" placeholder="再输入一次新密码">
+                  <p class="cl-hint">两次输入需一致</p>
+                </div>
+                <div class="account-form-actions">
+                  <button class="cl-btn cl-btn--primary" type="submit">更新密码</button>
+                </div>
+              </form>
+            </div>
+          </section>
+        </div>
+
+        <div class="cl-stack">
+          <section class="cl-panel">
+            <div class="cl-panel__head">
+              <div>
+                <h2 class="cl-card__title">历史对话</h2>
+                <p class="cl-card__sub">最近的聊天会话</p>
+              </div>
+              <a class="cl-btn cl-btn--soft cl-btn--xs" href="chat.html">去聊天</a>
+            </div>
+            <div class="cl-panel__body">
+              <div class="cl-empty cl-empty--compact">
+                <div class="cl-empty__art" aria-hidden="true"></div>
+                <h3 class="cl-empty__title">还没有对话记录</h3>
+                <p class="cl-empty__desc">和尘龙聊上几句，历史会话就会出现在这里。</p>
+                <div class="cl-empty__actions">
+                  <a class="cl-btn cl-btn--primary cl-btn--sm" href="chat.html">开始第一段对话</a>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="cl-panel">
+            <div class="cl-panel__head">
+              <div>
+                <h2 class="cl-card__title">账号安全</h2>
+                <p class="cl-card__sub">会话与登录状态</p>
+              </div>
+            </div>
+            <div class="cl-panel__body">
+              <div class="account-security">
+                <span class="cl-dot cl-dot--warn" aria-hidden="true"></span>
+                <span>登录会话由服务端 Cookie <code>chenlong.sid</code> 维护；修改密码后当前会话仍然有效，公共设备请及时退出。</span>
+              </div>
+              <div class="account-form-actions cl-mt-16">
+                <button class="cl-btn cl-btn--danger-ghost" type="button" data-logout>退出登录</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="cl-footer">
+    <div class="cl-container">
+      <div class="cl-footer__grid">
+        <div class="cl-footer__brand">
+          <a class="cl-logo" href="index.html" aria-label="尘龙 ChenLong 首页">
+            <span class="cl-logo__mark" aria-hidden="true"><img class="cl-logo__img" data-site-logo alt="" hidden></span>
+            <span class="cl-logo__text">尘龙<em>ChenLong</em></span>
+          </a>
+          <p>来自未来云端世界的小小龙，安静地陪你聊天、思考和探索。</p>
+        </div>
+        <div class="cl-footer__col">
+          <h2>产品</h2>
+          <a href="chat.html">开始聊天</a>
+          <a href="index.html#capabilities">AI 功能</a>
+          <a href="index.html#faq">常见问题</a>
+        </div>
+        <div class="cl-footer__col">
+          <h2>账号</h2>
+          <a href="login.html">登录</a>
+          <a href="register.html">注册</a>
+          <a href="user.html">用户中心</a>
+        </div>
+        <div class="cl-footer__col">
+          <h2>关于</h2>
+          <a href="index.html#explore">认识尘龙</a>
+          <a href="index.html#about">产品优势</a>
+          <a href="index.html">返回首页</a>
+        </div>
+      </div>
+      <div class="cl-footer__bottom">
+        <span>© 2026 尘龙 ChenLong · Your Little AI Companion</span>
+        <span>账号系统已接入 · AI 对话已上线</span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="js/app.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/guard.js"></script>
+</body>
+</html>

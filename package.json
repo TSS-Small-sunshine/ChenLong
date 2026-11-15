@@ -1,0 +1,26 @@
+{
+  "name": "chenlong",
+  "version": "0.1.0",
+  "private": true,
+  "description": "尘龙 ChenLong — AI 助手网站后端（Express + SQLite）",
+  "main": "server/app.js",
+  "scripts": {
+    "start": "node server/app.js",
+    "dev": "node --watch server/app.js",
+    "init-db": "node server/database/init.js",
+    "test": "node --test \"test/**/*.test.js\"",
+    "test:core": "node --test \"test/core/**/*.test.js\"",
+    "backup": "node scripts/backup-db.js"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^13.1.1",
+    "dotenv": "^18.0.10",
+    "express": "^5.3.0",
+    "express-session": "^1.19.0"
+  }
+}

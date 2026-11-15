@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#65BFFF">
+  <meta name="description" content="尘龙 ChenLong 后台：管理可用模型、默认模型与启用状态。">
+  <title>模型管理 · 尘龙 ChenLong 后台</title>
+  <link rel="stylesheet" href="../css/common.css">
+  <link rel="stylesheet" href="../css/admin.css">
+</head>
+<body data-guard="admin">
+  <div class="admin-shell">
+    <aside class="admin-nav" id="admin-nav" aria-label="后台导航">
+      <a class="admin-nav__brand" href="admin.html" aria-label="尘龙 ChenLong 后台首页">
+        <span class="cl-logo">
+          <span class="cl-logo__mark" aria-hidden="true"></span>
+          <span class="cl-logo__text">尘龙<em>ChenLong</em></span>
+        </span>
+        <span class="admin-nav__badge">ADMIN</span>
+      </a>
+
+      <p class="admin-nav__group">概览</p>
+      <a class="admin-nav__link" href="admin.html"><span class="admin-nav__icon admin-nav__icon--dash" aria-hidden="true"></span>仪表盘</a>
+
+      <p class="admin-nav__group">服务</p>
+      <a class="admin-nav__link" href="api.html"><span class="admin-nav__icon admin-nav__icon--api" aria-hidden="true"></span>API 管理</a>
+      <a class="admin-nav__link is-active" href="models.html" aria-current="page"><span class="admin-nav__icon admin-nav__icon--model" aria-hidden="true"></span>模型管理</a>
+
+      <p class="admin-nav__group">运营</p>
+      <a class="admin-nav__link" href="users.html"><span class="admin-nav__icon admin-nav__icon--user" aria-hidden="true"></span>用户管理</a>
+      <a class="admin-nav__link" href="data.html"><span class="admin-nav__icon admin-nav__icon--data" aria-hidden="true"></span>聊天数据</a>
+
+      <p class="admin-nav__group">系统</p>
+      <a class="admin-nav__link" href="settings.html"><span class="admin-nav__icon admin-nav__icon--setting" aria-hidden="true"></span>系统设置</a>
+
+      <div class="admin-nav__foot">
+        <a class="admin-nav__link" href="../index.html"><span class="admin-nav__icon admin-nav__icon--back" aria-hidden="true"></span>返回前台</a>
+        <button class="cl-btn cl-btn--ghost cl-btn--sm" type="button" data-logout>退出登录</button>
+        <div class="admin-nav__user">
+          <span class="cl-avatar cl-avatar--sm" aria-hidden="true" data-user-avatar>尘</span>
+          <div class="admin-nav__user-meta">
+            <div class="admin-nav__user-name" data-user-nickname>未登录管理员</div>
+            <div class="admin-nav__user-role" data-user-role>管理员</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+    <div class="admin-main">
+      <header class="admin-topbar">
+        <button class="admin-topbar__toggle" type="button" data-admin-toggle aria-label="打开后台导航" aria-expanded="false" aria-controls="admin-nav"><span aria-hidden="true"></span></button>
+        <nav class="admin-topbar__crumb" aria-label="面包屑">
+          <a href="admin.html">后台</a>
+          <span aria-hidden="true">/</span>
+          <strong>模型管理</strong>
+        </nav>
+        <div class="admin-topbar__right">
+          <a class="cl-btn cl-btn--ghost cl-btn--xs" href="../index.html">返回前台</a>
+          <span class="cl-avatar cl-avatar--sm" aria-hidden="true" data-user-avatar>尘</span>
+        </div>
+      </header>
+      <main class="admin-content">
+        <header class="admin-page-head">
+          <div class="admin-page-head__text">
+            <h1>模型管理</h1>
+            <p>为聊天提供可选模型，并决定哪一个作为默认模型。</p>
+          </div>
+          <div class="admin-page-head__actions">
+            <button class="cl-btn cl-btn--ghost" type="button" data-model-sync>从 API 同步</button>
+            <a class="cl-btn cl-btn--primary" href="#model-form">添加模型</a>
+          </div>
+        </header>
+
+        <section class="cl-panel">
+          <div class="cl-panel__head">
+            <div>
+              <h2 class="cl-card__title">模型列表</h2>
+              <p class="cl-card__sub">同一个 API 下可添加多个模型</p>
+            </div>
+            <span class="cl-tag cl-tag--pending" data-model-count>0 个模型</span>
+          </div>
+          <div class="cl-panel__body">
+            <div class="admin-toolbar">
+              <div class="cl-search">
+                <input class="cl-input" id="model-search" type="search" placeholder="搜索模型名称或 ID" aria-label="搜索模型" data-model-search>
+              </div>
+              <div class="admin-toolbar__right">
+                <select class="cl-select" id="model-provider-filter" aria-label="按所属 API 筛选" data-model-provider-filter>
+                  <option value="">全部 API</option>
+                </select>
+                <select class="cl-select" id="model-status-filter" aria-label="按状态筛选" data-model-status-filter>
+                  <option value="">全部状态</option>
+                  <option value="enabled">已启用</option>
+                  <option value="disabled">已禁用</option>
+                </select>
+              </div>
+            </div>
+            <div class="cl-table-wrap">
+              <table class="cl-table">
+                <thead>
+                  <tr><th scope="col">名称</th><th scope="col">模型 ID</th><th scope="col">所属 API</th><th scope="col">状态</th><th scope="col">是否默认</th><th scope="col">创建时间</th><th scope="col">操作</th></tr>
+                </thead>
+                <tbody data-model-rows>
+                  <tr class="cl-table__empty">
+                    <td colspan="7">
+                      <div class="cl-empty cl-empty--compact">
+                        <div class="cl-empty__art" aria-hidden="true"></div>
+                        <h3 class="cl-empty__title">还没有添加模型</h3>
+                        <p class="cl-empty__desc">先在「API 管理」中添加服务，再拉取或手动添加模型。</p>
+                        <div class="cl-empty__actions"><a class="cl-btn cl-btn--primary cl-btn--sm" href="api.html">去添加 API</a></div>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="admin-hint"><span>默认模型全局唯一且必须是启用状态；「从 API 同步」会依次刷新所有已启用服务，新模型默认禁用。</span></p>
+          </div>
+        </section>
+
+        <section class="cl-panel cl-mt-24" id="model-form">
+          <div class="cl-panel__head">
+            <div>
+              <h2 class="cl-card__title" data-model-form-title>添加模型</h2>
+              <p class="cl-card__sub">手动填写模型信息，或从所属 API 拉取</p>
+            </div>
+            <span class="cl-tag cl-tag--pending" data-model-mode>新增</span>
+          </div>
+          <div class="cl-panel__body">
+            <form class="cl-form" data-model-form novalidate>
+              <p class="cl-hint admin-form-status" data-model-form-error role="alert" hidden></p>
+              <div class="form-grid-2">
+                <div class="cl-field">
+                  <label class="cl-label" for="model-name">名称<span class="cl-req" aria-hidden="true">*</span></label>
+                  <input class="cl-input" id="model-name" name="displayName" type="text" placeholder="例如：尘龙 · 轻量" autocomplete="off">
+                  <p class="cl-hint">展示在聊天页的模型选择器中</p>
+                </div>
+                <div class="cl-field">
+                  <label class="cl-label" for="model-id">模型 ID<span class="cl-req" aria-hidden="true">*</span></label>
+                  <input class="cl-input" id="model-id" name="modelId" type="text" placeholder="例如：gpt-4o-mini" autocomplete="off" spellcheck="false">
+                  <p class="cl-hint">由服务方提供，需与接口调用一致</p>
+                </div>
+              </div>
+
+              <div class="cl-field">
+                <label class="cl-label" for="model-api">所属 API<span class="cl-req" aria-hidden="true">*</span></label>
+                <select class="cl-select" id="model-api" name="providerId">
+                  <option value="">请选择 API 服务</option>
+                </select>
+                <p class="cl-hint" data-model-provider-hint>从「API 管理」里已添加的服务中选择</p>
+              </div>
+
+              <div class="form-grid-2">
+                <label class="cl-switch" for="model-enabled">
+                  <input id="model-enabled" name="enabled" type="checkbox" checked>
+                  <span class="cl-switch__track" aria-hidden="true"></span>
+                  <span>启用该模型</span>
+                </label>
+                <label class="cl-switch" for="model-default">
+                  <input id="model-default" name="isDefault" type="checkbox">
+                  <span class="cl-switch__track" aria-hidden="true"></span>
+                  <span>设为默认模型</span>
+                </label>
+              </div>
+              <p class="cl-hint" data-model-default-hint>全局只能有一个默认模型，且必须是启用状态</p>
+
+              <p class="cl-hint" data-model-current></p>
+
+              <div class="cl-row cl-row--wrap cl-mt-16">
+                <button class="cl-btn cl-btn--primary" type="submit">保存</button>
+                <button class="cl-btn cl-btn--ghost" type="button" data-model-test>测试</button>
+                <button class="cl-btn cl-btn--soft" type="button" data-model-pull>从 API 拉取</button>
+                <button class="cl-btn cl-btn--ghost" type="button" data-model-cancel hidden>取消编辑</button>
+              </div>
+            </form>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script src="../js/app.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/guard.js"></script>
+  <script src="../js/admin.js"></script>
+  <script src="../js/api.js"></script>
+  <script src="../js/models.js"></script>
+</body>
+</html>

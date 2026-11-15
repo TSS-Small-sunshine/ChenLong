@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#65BFFF">
+  <meta name="description" content="注册尘龙 ChenLong 账号，开启属于你的 AI 小龙伙伴。">
+  <title>注册 · 尘龙 ChenLong</title>
+  <link rel="stylesheet" href="css/common.css">
+</head>
+<body class="auth-page">
+  <div class="cl-sky" aria-hidden="true">
+    <span class="cl-sky__blob cl-sky__blob--1"></span>
+    <span class="cl-sky__blob cl-sky__blob--2"></span>
+    <span class="cl-sky__blob cl-sky__blob--3"></span>
+  </div>
+
+  <main class="auth auth--wide">
+    <a class="cl-logo" href="index.html" aria-label="尘龙 ChenLong 首页">
+        <span class="cl-logo__mark" aria-hidden="true"><img class="cl-logo__img" data-site-logo alt="" hidden></span>
+        <span class="cl-logo__text" data-site-name>尘龙<em>ChenLong</em></span>
+      </a>
+
+    <p class="auth__brand-sub" data-site-subtitle>Your Little AI Companion</p>
+
+    <section class="cl-card cl-card--glass auth__card" aria-labelledby="register-title">
+      <div class="auth__head">
+        <h1 id="register-title">认识一下？</h1>
+        <p>创建账号，让尘龙记住你们的每一次对话。</p>
+      </div>
+
+      <form class="cl-form" data-auth-form="register" novalidate>
+        <div class="cl-field">
+          <label class="cl-label" for="nickname">昵称<span class="cl-req" aria-hidden="true">*</span></label>
+          <input class="cl-input" id="nickname" name="nickname" type="text" autocomplete="nickname" placeholder="尘龙该怎么称呼你？">
+          <p class="cl-hint" id="register-nickname-hint">1–20 个字符，可随时修改</p>
+        </div>
+
+        <div class="cl-field">
+          <label class="cl-label" for="username">用户名<span class="cl-req" aria-hidden="true">*</span></label>
+          <input class="cl-input" id="username" name="username" type="text" autocomplete="username" placeholder="用于登录，3–24 位字符">
+          <p class="cl-hint" id="register-username-hint">注册后不可修改</p>
+        </div>
+
+        <div class="cl-field">
+          <label class="cl-label" for="password">密码<span class="cl-req" aria-hidden="true">*</span></label>
+          <div class="cl-input-affix">
+            <input class="cl-input" id="password" name="password" type="password" autocomplete="new-password" placeholder="至少 6 位字符">
+            <button class="cl-pw-toggle" type="button" data-toggle-password="#password" aria-label="显示密码" aria-pressed="false"></button>
+          </div>
+          <p class="cl-hint" id="register-password-hint">建议混合字母与数字</p>
+        </div>
+
+        <div class="cl-field">
+          <label class="cl-label" for="confirmPassword">确认密码<span class="cl-req" aria-hidden="true">*</span></label>
+          <input class="cl-input" id="confirmPassword" name="confirmPassword" type="password" autocomplete="new-password" placeholder="再输入一次密码">
+          <p class="cl-hint" id="register-confirm-hint">两次输入需一致</p>
+        </div>
+
+        <label class="cl-check" for="agree">
+          <input id="agree" name="agree" type="checkbox">
+          <span>我已阅读并同意《用户协议》与《隐私政策》（占位文案，正式条款待补充）</span>
+        </label>
+
+        <button class="cl-btn cl-btn--primary cl-btn--lg cl-btn--block" type="submit">创建账号</button>
+      </form>
+
+      <p class="auth__switch">已经有账号了？<a href="login.html">直接登录</a></p>
+      <p class="auth__note">注册成功即自动登录并进入用户中心；用户名注册后不可修改。</p>
+    </section>
+
+    <a class="auth__back" href="index.html">← 返回首页</a>
+  </main>
+
+  <script src="js/app.js"></script>
+  <script src="js/auth.js"></script>
+</body>
+</html>
