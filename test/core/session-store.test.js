@@ -147,5 +147,12 @@ test('set/destroy 可省略回调（异步完成，不抛同步错误）', async
   assert.deepEqual(await waitForValue(() => call('get', 'sid-no-callback')), expected);
 
   assert.doesNotThrow(() => store.destroy('sid-no-callback'));
-  assert.equal(await waitForValue(() => call('get', 'sid-no-callback')), null);
+  // destroy 不传回调是 fire-and-forget：轮询等待异步删除完成
+  let remaining = await call('get', 'sid-no-callback');
+  const deadline = Date.now() + 2000;
+  while (remaining !== null && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    remaining = await call('get', 'sid-no-callback');
+  }
+  assert.equal(remaining, null);
 });
