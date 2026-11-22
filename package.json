@@ -26,6 +26,6 @@
     "pg": "^8.23.1"
   },
   "devDependencies": {
-    "better-sqlite3": "^13.1.1"
+    "better-sqlite3": "^13.2.0"
   }
 }
